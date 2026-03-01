@@ -136,13 +136,7 @@ function ActionButton({
     </button>
   );
 }
-function RoundButton({ label }: { label: string }) {
-  return (
-    <button className="rounded-full bg-slate-100 w-8 h-8 m-0.5" type="button">
-      {label}
-    </button>
-  );
-}
+
 function CircleIconButton({
   label,
   onClick,
