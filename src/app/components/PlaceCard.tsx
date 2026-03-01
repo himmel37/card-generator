@@ -61,9 +61,33 @@ export default function PlaceCard() {
 
     const dataUrl = await toPng(cardRef.current);
 
+    // 파일 생성
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], "card.png", { type: "image/png" });
+
+    // 📱 모바일 + 파일 공유 지원할 때만 공유창
+    if (
+      typeof navigator !== "undefined" &&
+      navigator.share &&
+      navigator.canShare &&
+      navigator.canShare({ files: [file] })
+    ) {
+      try {
+        await navigator.share({
+          files: [file],
+          title: "카드 저장",
+        });
+        return; // 여기서 끝 (공유 성공 시 다운로드 안 함)
+      } catch (err) {
+        console.log("공유 취소 또는 실패 → 다운로드로 fallback");
+      }
+    }
+
+    // 🖥 데스크탑 또는 공유 불가 시 → 바로 다운로드
     const link = document.createElement("a");
-    link.download = "card.png";
     link.href = dataUrl;
+    link.download = "card.png";
     link.click();
   }
 
