@@ -41,8 +41,17 @@ export default function PlaceCard() {
 
   function handleFile(file: File | null) {
     if (!file) return;
-    const url = URL.createObjectURL(file);
-    setData((prev) => ({ ...prev, imageUrl: url }));
+
+    const reader = new FileReader();
+
+    reader.onloadend = () => {
+      setData((prev) => ({
+        ...prev,
+        imageUrl: reader.result as string,
+      }));
+    };
+
+    reader.readAsDataURL(file);
   }
 
   const cardRef = useRef<HTMLDivElement>(null);
@@ -66,7 +75,8 @@ export default function PlaceCard() {
           <img
             src={data.imageUrl}
             alt=""
-            className="absolute inset-0 w-full h-full object-cover"
+            className="w-full h-full object-cover"
+            crossOrigin="anonymous"
           />
 
           {/* hover overlay */}
