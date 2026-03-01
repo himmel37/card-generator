@@ -1,161 +1,190 @@
 "use client";
-import {
-  Navigation,
-  UtensilsCrossed,
-  Phone,
-  Bookmark,
-  Share2,
-  X,
-} from "lucide-react";
 
-type Place = {
-  name: string;
-  rating: number;
-  reviewCount: number;
-  category: string;
-  status: string;
-  subtitle: string;
-};
+import { useRef, useState } from "react";
+import { toPng } from "html-to-image";
 
-const actions = [
-  {
-    key: "route",
-    label: "경로",
-    Icon: Navigation,
-    variant: "route" as const,
-  },
-  {
-    key: "order",
-    label: "주문",
-    Icon: UtensilsCrossed,
-    variant: "order" as const,
-  },
-  {
-    key: "call",
-    label: "통화",
-    Icon: Phone,
-    variant: "call" as const,
-  },
-  {
-    key: "save",
-    label: "저장됨",
-    Icon: Bookmark,
-    variant: "save" as const,
-  },
-];
-export default function PlaceCard({ place }: { place: Place }) {
+type EditField = "title" | "category" | "subtitle" | null;
+
+export default function PlaceCard() {
+  const [data, setData] = useState({
+    imageUrl: "/riku.jpg",
+    title: "내 이름은 김삼순",
+    category: "드라마 김삼순",
+    subtitle: "돈 주면 다 합니다",
+  });
+
+  const [editing, setEditing] = useState<EditField>(null);
+  const [draft, setDraft] = useState("");
+
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  function startEdit(field: EditField) {
+    if (!field) return;
+    setEditing(field);
+    setDraft(data[field] ?? "");
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function commit() {
+    if (!editing) return;
+
+    const value = draft.trim();
+
+    setData((prev) => ({
+      ...prev,
+      [editing]: value || undefined,
+    }));
+
+    setEditing(null);
+  }
+
+  function handleFile(file: File | null) {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setData((prev) => ({ ...prev, imageUrl: url }));
+  }
+
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  async function handleDownload() {
+    if (!cardRef.current) return;
+
+    const dataUrl = await toPng(cardRef.current);
+
+    const link = document.createElement("a");
+    link.download = "card.png";
+    link.href = dataUrl;
+    link.click();
+  }
+
   return (
-    <section
-      className="bg-white text-black
-    rounded-t-3xl
-    p-5 shadow-xl"
-    >
-      <div className="flex justify-between items-center">
-        <h1 className="text-lg font-semibold text-black">{place.name}</h1>
-        <div className="flex items-center gap-2">
-          <CircleIconButton label="북마크" onClick={() => {}}>
-            <Bookmark size={18} />
-          </CircleIconButton>
+    <div ref={cardRef} className="rounded-3xl overflow-hidden bg-white">
+      <div className="relative w-full bg-black rounded-3xl overflow-hidden shadow-2xl">
+        {/* 📷 이미지 영역 */}
+        <div className="relative aspect-[390/500] group">
+          <img
+            src={data.imageUrl}
+            alt=""
+            className="absolute inset-0 w-full h-full object-cover"
+          />
 
-          <CircleIconButton label="공유" onClick={() => {}}>
-            <Share2 size={18} />
-          </CircleIconButton>
+          {/* hover overlay */}
+          <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+            <span className="bg-black/60 text-white text-sm px-4 py-2 rounded-full">
+              사진 변경
+            </span>
+          </div>
 
-          <CircleIconButton label="닫기" onClick={() => {}}>
-            <X size={18} />
-          </CircleIconButton>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="absolute inset-0"
+          />
+
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => handleFile(e.target.files?.[0] ?? null)}
+          />
+        </div>
+
+        {/* 🧾 카드 영역 */}
+        <div className="bg-white text-neutral-900 rounded-t-3xl -mt-16 relative z-10 p-6">
+          {/* 제목 */}
+          {editing === "title" ? (
+            <input
+              ref={inputRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onBlur={commit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commit();
+                if (e.key === "Escape") setEditing(null);
+              }}
+              className="w-full text-lg font-semibold outline-none border-b"
+            />
+          ) : (
+            <h1
+              onClick={() => startEdit("title")}
+              className="text-lg font-semibold cursor-text"
+            >
+              {data.title}
+            </h1>
+          )}
+
+          {/* 카테고리 */}
+          <div className="mt-2">
+            {editing === "category" ? (
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                  if (e.key === "Escape") setEditing(null);
+                }}
+                className="w-full text-sm outline-none border-b"
+                placeholder="카테고리 입력"
+              />
+            ) : data.category ? (
+              <p
+                onClick={() => startEdit("category")}
+                className="text-sm text-neutral-600 cursor-text"
+              >
+                {data.category}
+              </p>
+            ) : (
+              <button
+                onClick={() => startEdit("category")}
+                className="text-sm text-neutral-400 italic"
+              >
+                카테고리 추가
+              </button>
+            )}
+          </div>
+
+          {/* 서브타이틀 */}
+          <div className="mt-2">
+            {editing === "subtitle" ? (
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                  if (e.key === "Escape") setEditing(null);
+                }}
+                className="w-full text-sm outline-none border-b"
+                placeholder="서브타이틀 입력"
+              />
+            ) : data.subtitle ? (
+              <p
+                onClick={() => startEdit("subtitle")}
+                className="text-sm text-neutral-500 cursor-text"
+              >
+                {data.subtitle}
+              </p>
+            ) : (
+              <button
+                onClick={() => startEdit("subtitle")}
+                className="text-sm text-neutral-400 italic"
+              >
+                서브타이틀 추가
+              </button>
+            )}
+          </div>
+          <button
+            onClick={handleDownload}
+            className="mt-6 px-4 py-2 bg-black text-white rounded-xl"
+          >
+            저장
+          </button>
         </div>
       </div>
-      <div className="mt-2 flex items-center gap-2 text-sm text-gray-700">
-        <span className="font-semibold">{place.rating.toFixed(1)}</span>
-        <Stars />
-        <span className="text-gray-500">
-          ({place.reviewCount.toLocaleString()})
-        </span>
-      </div>
-      <div className="mt-1 text-sm text-gray-600">{place.category}</div>
-      <div className="mt-3 flex items-center gap-2 text-sm">
-        <span className="font-semibold text-blue-600">{place.status}</span>
-        <span className="text-gray-700">{place.subtitle}</span>
-      </div>
-      <div className="mt-5 grid grid-cols-4 gap-3">
-        {actions.map(({ key, label, Icon, variant }) => (
-          <ActionButton key={key} label={label} Icon={Icon} variant={variant} />
-        ))}
-      </div>
-    </section>
-  );
-}
-function Stars() {
-  // 일단은 “별 5개 고정” (나중에 rating 기반으로 바꿔도 됨)
-  return (
-    <div className="flex gap-0.5" aria-label="rating stars">
-      {"★★★★★".split("").map((s, i) => (
-        <span key={i} className="text-yellow-500">
-          {s}
-        </span>
-      ))}
     </div>
-  );
-}
-type ButtonVariant = "route" | "order" | "call" | "save";
-function ActionButton({
-  label,
-  Icon,
-  variant,
-}: {
-  label: string;
-  Icon: React.ComponentType<{ size?: number; className?: string }>;
-  variant: ButtonVariant;
-}) {
-  const base =
-    "flex items-center justify-center gap-2 rounded-full px-3 py-3 text-sm font-medium active:scale-[0.98] transition";
-
-  const styles: Record<ButtonVariant, { wrapper: string; icon: string }> = {
-    route: {
-      wrapper: "bg-teal-700 text-white",
-      icon: "text-white",
-    },
-    order: {
-      wrapper: "bg-sky-100 text-sky-700",
-      icon: "text-sky-700",
-    },
-    call: {
-      wrapper: "bg-emerald-100 text-emerald-700",
-      icon: "text-emerald-700",
-    },
-    save: {
-      wrapper: "bg-gray-200 text-gray-700",
-      icon: "text-gray-700",
-    },
-  };
-  return (
-    <button className={`${base} ${styles[variant].wrapper}`} type="button">
-      <Icon size={18} className={styles[variant].icon} />
-      <span>{label}</span>
-    </button>
-  );
-}
-
-function CircleIconButton({
-  label,
-  onClick,
-  children,
-}: {
-  label: string;
-  onClick?: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      onClick={onClick}
-      className="h-9 w-9 rounded-full bg-slate-100 text-slate-700 shadow-sm
-                 flex items-center justify-center
-                 hover:bg-slate-200 active:scale-[0.97] transition"
-    >
-      {children}
-    </button>
   );
 }
