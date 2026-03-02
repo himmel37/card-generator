@@ -2,6 +2,14 @@
 
 import { useRef, useState } from "react";
 import { toPng } from "html-to-image";
+import {
+  Bookmark,
+  Share2,
+  X,
+  CornerUpRight,
+  Navigation2,
+  Share,
+} from "lucide-react";
 
 type EditField = "title" | "category" | "subtitle" | null;
 
@@ -11,6 +19,8 @@ export default function PlaceCard() {
     title: "내 이름은 김삼순",
     category: "드라마 김삼순",
     subtitle: "돈 주면 다 합니다",
+    rating: 5.0,
+    reviewCount: 9999,
   });
 
   const [editing, setEditing] = useState<EditField>(null);
@@ -59,36 +69,38 @@ export default function PlaceCard() {
   async function handleDownload() {
     if (!cardRef.current) return;
 
-    const dataUrl = await toPng(cardRef.current);
+    try {
+      // cacheBust를 true로 설정하여 이미지 캐시 문제를 방지합니다.
+      const dataUrl = await toPng(cardRef.current, {
+        cacheBust: true,
+        pixelRatio: 2, // 결과물 화질을 높입니다.
+      });
 
-    // 파일 생성
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    const file = new File([blob], "card.png", { type: "image/png" });
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], "card.png", { type: "image/png" });
 
-    // 📱 모바일 + 파일 공유 지원할 때만 공유창
-    if (
-      typeof navigator !== "undefined" &&
-      navigator.share &&
-      navigator.canShare &&
-      navigator.canShare({ files: [file] })
-    ) {
-      try {
+      if (
+        typeof navigator !== "undefined" &&
+        navigator.share &&
+        navigator.canShare &&
+        navigator.canShare({ files: [file] })
+      ) {
         await navigator.share({
           files: [file],
           title: "카드 저장",
         });
-        return; // 여기서 끝 (공유 성공 시 다운로드 안 함)
-      } catch (err) {
-        console.log("공유 취소 또는 실패 → 다운로드로 fallback");
+        return;
       }
-    }
 
-    // 🖥 데스크탑 또는 공유 불가 시 → 바로 다운로드
-    const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = "card.png";
-    link.click();
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = "card.png";
+      link.click();
+    } catch (err) {
+      console.error("저장 중 오류 발생:", err);
+      alert("이미지 저장에 실패했습니다.");
+    }
   }
 
   return (
@@ -126,30 +138,52 @@ export default function PlaceCard() {
 
         {/* 🧾 카드 영역 */}
         <div className="bg-white text-neutral-900 rounded-t-3xl -mt-16 relative z-10 p-6">
-          {/* 제목 */}
-          {editing === "title" ? (
-            <input
-              ref={inputRef}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={commit}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") commit();
-                if (e.key === "Escape") setEditing(null);
-              }}
-              className="w-full text-lg font-semibold outline-none border-b"
-            />
-          ) : (
-            <h1
-              onClick={() => startEdit("title")}
-              className="text-lg font-semibold cursor-text"
-            >
-              {data.title}
-            </h1>
-          )}
-
+          <div className="flex justify-between items-center">
+            {/* 제목 */}
+            {editing === "title" ? (
+              <input
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={commit}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commit();
+                  if (e.key === "Escape") setEditing(null);
+                }}
+                className="w-full text-lg font-semibold outline-none border-b"
+              />
+            ) : (
+              <h1
+                onClick={() => startEdit("title")}
+                className="text-lg font-semibold cursor-text"
+              >
+                {data.title}
+              </h1>
+            )}
+            <div className="flex items-center gap-3">
+              <CircleIconButton label="북마크" onClick={handleDownload}>
+                <Bookmark size={18} />
+              </CircleIconButton>
+              <CircleIconButton label="공유" onClick={handleDownload}>
+                <Share2 size={18} />
+              </CircleIconButton>
+              <CircleIconButton label="삭제" onClick={() => {}}>
+                <X size={18} />
+              </CircleIconButton>
+            </div>
+          </div>
+          {/* ⭐ 별점 + 리뷰 */}
+          <div className="flex items-center gap-2">
+            <Stars rating={data.rating} />
+            <span className="text-sm text-neutral-600">
+              {data.rating.toFixed(1)}
+            </span>
+            <span className="text-sm text-neutral-400">
+              (리뷰 {data.reviewCount})
+            </span>
+          </div>
           {/* 카테고리 */}
-          <div className="mt-2">
+          <div className="mt-1">
             {editing === "category" ? (
               <input
                 ref={inputRef}
@@ -181,7 +215,7 @@ export default function PlaceCard() {
           </div>
 
           {/* 서브타이틀 */}
-          <div className="mt-2">
+          <div className="mt-1">
             {editing === "subtitle" ? (
               <input
                 ref={inputRef}
@@ -211,14 +245,111 @@ export default function PlaceCard() {
               </button>
             )}
           </div>
-          <button
-            onClick={handleDownload}
-            className="mt-6 px-4 py-2 bg-black text-white rounded-xl"
-          >
-            저장
-          </button>
+          {/* 🔘 액션 버튼들 */}
+          <div className="mt-3 grid grid-cols-4 gap-3">
+            <ActionButton
+              label="경로"
+              Icon={CornerUpRight}
+              variant="darkGreen"
+            />
+            <ActionButton label="시작" Icon={Navigation2} variant="skyBlue" />
+            <ActionButton
+              label="저장"
+              Icon={Bookmark}
+              variant="skyBlue"
+              onClick={handleDownload}
+            />
+            <ActionButton
+              label="공유"
+              Icon={Share}
+              variant="skyBlue"
+              onClick={handleDownload}
+            />
+          </div>
         </div>
       </div>
     </div>
   );
+  function Stars({ rating }: { rating: number }) {
+    const fullStars = Math.floor(rating);
+    const emptyStars = 5 - fullStars;
+
+    return (
+      <div className="flex items-center gap-1" aria-label="rating stars">
+        {[...Array(fullStars)].map((_, i) => (
+          <span key={`f-${i}`} className="text-yellow-500">
+            ★
+          </span>
+        ))}
+        {[...Array(emptyStars)].map((_, i) => (
+          <span key={`e-${i}`} className="text-gray-300">
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  }
+  type ButtonVariant = "darkGreen" | "skyBlue" | "gray";
+  function ActionButton({
+    label,
+    Icon,
+    variant,
+    onClick,
+  }: {
+    label: string;
+    Icon: React.ComponentType<{ size?: number; className?: string }>;
+    variant: ButtonVariant;
+    onClick?: () => void;
+  }) {
+    const base =
+      "flex items-center justify-center gap-2 rounded-full px-3 py-3 text-sm font-medium active:scale-[0.98] transition";
+
+    const styles: Record<ButtonVariant, { wrapper: string; icon: string }> = {
+      darkGreen: {
+        wrapper: "bg-teal-700 text-white",
+        icon: "text-white",
+      },
+      skyBlue: {
+        wrapper: "bg-sky-100 text-sky-700",
+        icon: "text-sky-700",
+      },
+      gray: {
+        wrapper: "bg-gray-200 text-gray-700",
+        icon: "text-gray-700",
+      },
+    };
+    return (
+      <button
+        className={`${base} ${styles[variant].wrapper}`}
+        type="button"
+        onClick={onClick}
+      >
+        <Icon size={18} className={styles[variant].icon} />
+        <span>{label}</span>
+      </button>
+    );
+  }
+
+  function CircleIconButton({
+    label,
+    onClick,
+    children,
+  }: {
+    label: string;
+    onClick?: () => void;
+    children: React.ReactNode;
+  }) {
+    return (
+      <button
+        type="button"
+        aria-label={label}
+        onClick={onClick}
+        className="flex items-center justify-center gap-2 rounded-full 
+          px-2 py-2 text-sm font-medium shadow-sm
+          active:scale-[0.97] transition bg-gray-200 text-gray-700"
+      >
+        {children}
+      </button>
+    );
+  }
 }
