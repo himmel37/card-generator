@@ -25,6 +25,7 @@ export default function PlaceCard() {
 
   const [editing, setEditing] = useState<EditField>(null);
   const [draft, setDraft] = useState("");
+  const [isImageLoaded, setIsImageLoaded] = useState(false);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -67,13 +68,20 @@ export default function PlaceCard() {
   const cardRef = useRef<HTMLDivElement>(null);
 
   async function handleDownload() {
-    if (!cardRef.current) return;
+    if (!cardRef.current || !isImageLoaded) {
+      alert("이미지가 아직 로딩 중입니다!");
+      return;
+    }
+    // 0.2초 정도 살짝 기다려주는 센스 (렌더링 안정화)
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     try {
       // cacheBust를 true로 설정하여 이미지 캐시 문제를 방지합니다.
       const dataUrl = await toPng(cardRef.current, {
         cacheBust: true,
-        pixelRatio: 2, // 결과물 화질을 높입니다.
+        pixelRatio: 2, // 모바일 화질 보정
+        skipFonts: true, // 폰트 로딩 문제로 인한 깨짐 방지
+        includeQueryParams: true,
       });
 
       const res = await fetch(dataUrl);
@@ -113,6 +121,7 @@ export default function PlaceCard() {
             alt=""
             className="w-full h-full object-cover"
             crossOrigin="anonymous"
+            onLoad={() => setIsImageLoaded(true)} // 이미지 로딩 완료 확인
           />
 
           {/* hover overlay */}
@@ -337,7 +346,7 @@ export default function PlaceCard() {
         aria-label={label}
         onClick={onClick}
         className="flex items-center justify-center gap-2 rounded-full 
-          px-2 py-2 text-sm font-medium shadow-sm
+          px-2 py-2 text-sm font-medium
           active:scale-[0.97] transition bg-gray-200 text-gray-700"
       >
         {children}
