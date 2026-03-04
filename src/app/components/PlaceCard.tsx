@@ -173,7 +173,7 @@ export default function PlaceCard() {
             </div>
           </div>
           {/* ⭐ 별점 + 리뷰 */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mt-1">
             <Stars rating={data.rating} />
             <span className="text-sm text-neutral-600">
               {data.rating.toFixed(1)}
@@ -246,7 +246,7 @@ export default function PlaceCard() {
             )}
           </div>
           {/* 🔘 액션 버튼들 */}
-          <div className="mt-3 grid grid-cols-4 gap-3">
+          <div className="mt-2 grid grid-cols-4 gap-2">
             <ActionButton
               label="경로"
               Icon={CornerUpRight}
@@ -289,7 +289,6 @@ export default function PlaceCard() {
       </div>
     );
   }
-  type ButtonVariant = "darkGreen" | "skyBlue" | "gray";
   function ActionButton({
     label,
     Icon,
@@ -298,34 +297,27 @@ export default function PlaceCard() {
   }: {
     label: string;
     Icon: React.ComponentType<{ size?: number; className?: string }>;
-    variant: ButtonVariant;
+    variant: "darkGreen" | "skyBlue";
     onClick?: () => void;
   }) {
     const base =
-      "flex items-center justify-center gap-2 rounded-full px-3 py-3 text-sm font-medium active:scale-[0.98] transition";
+      "flex items-center justify-center w-full rounded-2xl transition active:scale-[0.97] p-2 gap-1";
 
-    const styles: Record<ButtonVariant, { wrapper: string; icon: string }> = {
-      darkGreen: {
-        wrapper: "bg-teal-700 text-white",
-        icon: "text-white",
-      },
-      skyBlue: {
-        wrapper: "bg-sky-100 text-sky-700",
-        icon: "text-sky-700",
-      },
-      gray: {
-        wrapper: "bg-gray-200 text-gray-700",
-        icon: "text-gray-700",
-      },
+    const styles = {
+      darkGreen: "bg-teal-700 text-white",
+      skyBlue: "bg-sky-100 text-sky-700",
     };
+
     return (
       <button
-        className={`${base} ${styles[variant].wrapper}`}
         type="button"
         onClick={onClick}
+        className={`${base} ${styles[variant]}`}
       >
-        <Icon size={18} className={styles[variant].icon} />
-        <span>{label}</span>
+        <Icon className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+        <span className="text-[10px] sm:text-xs md:text-sm whitespace-nowrap">
+          {label}
+        </span>
       </button>
     );
   }
