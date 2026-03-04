@@ -9,6 +9,7 @@ import {
   CornerUpRight,
   Navigation2,
   Share,
+  Star,
 } from "lucide-react";
 
 type EditField = "title" | "category" | "subtitle" | null;
@@ -25,11 +26,13 @@ export default function PlaceCard() {
   });
 
   const [editing, setEditing] = useState<EditField>(null);
+  const [editingReview, setEditingReview] = useState(false);
   const [draft, setDraft] = useState("");
   const [isImageLoaded, setIsImageLoaded] = useState(false);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   function startEdit(field: EditField) {
     if (!field) return;
@@ -65,8 +68,6 @@ export default function PlaceCard() {
 
     reader.readAsDataURL(file);
   }
-
-  const cardRef = useRef<HTMLDivElement>(null);
 
   async function handleDownload() {
     if (!cardRef.current || !isImageLoaded) {
@@ -119,6 +120,19 @@ export default function PlaceCard() {
       alert("이미지 저장에 실패했습니다.");
     }
   }
+
+  // 별점 수정 함수
+  const handleRating = (rate: number) => {
+    setData((prev) => ({ ...prev, rating: rate }));
+  };
+
+  // 리뷰 수 수정 함수
+  const handleReviewChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = parseInt(e.target.value.replace(/[^0-9]/g, ""));
+    if (isNaN(val)) val = 0;
+    if (val > 9999) val = 9999;
+    setData((prev) => ({ ...prev, reviewCount: val }));
+  };
 
   return (
     <div ref={cardRef} className="rounded-3xl overflow-hidden bg-white">
@@ -192,15 +206,35 @@ export default function PlaceCard() {
               </CircleIconButton>
             </div>
           </div>
-          {/* ⭐ 별점 + 리뷰 */}
-          <div className="flex items-center gap-2 mt-1">
-            <Stars rating={data.rating} />
-            <span className="text-sm text-neutral-600">
+          {/* ⭐ 별점 + 리뷰 수정 */}
+          <div className="flex items-center gap-2 mt-2">
+            <div className="flex gap-0.5">
+              <Stars
+                rating={data.rating}
+                onRate={(num) => setData((prev) => ({ ...prev, rating: num }))}
+              />
+            </div>
+            <span className="text-sm font-bold text-neutral-800">
               {data.rating.toFixed(1)}
             </span>
-            <span className="text-sm text-neutral-400">
-              (리뷰 {data.reviewCount})
-            </span>
+
+            {editingReview ? (
+              <input
+                autoFocus
+                type="number"
+                className="w-16 text-sm border-b border-teal-500 outline-none"
+                value={data.reviewCount}
+                onChange={handleReviewChange}
+                onBlur={() => setEditingReview(false)}
+              />
+            ) : (
+              <span
+                onClick={() => setEditingReview(true)}
+                className="text-sm text-neutral-400 cursor-pointer"
+              >
+                (리뷰 {data.reviewCount})
+              </span>
+            )}
           </div>
           {/* 카테고리 */}
           <div className="mt-1">
@@ -290,25 +324,32 @@ export default function PlaceCard() {
       </div>
     </div>
   );
-  function Stars({ rating }: { rating: number }) {
-    const fullStars = Math.floor(rating);
-    const emptyStars = 5 - fullStars;
 
+  function Stars({
+    rating,
+    onRate,
+  }: {
+    rating: number;
+    onRate: (n: number) => void;
+  }) {
     return (
-      <div className="flex items-center gap-1" aria-label="rating stars">
-        {[...Array(fullStars)].map((_, i) => (
-          <span key={`f-${i}`} className="text-yellow-500">
-            ★
-          </span>
-        ))}
-        {[...Array(emptyStars)].map((_, i) => (
-          <span key={`e-${i}`} className="text-gray-300">
-            ★
-          </span>
+      <div className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((num) => (
+          <Star
+            key={num}
+            size={18} // 여기서 size를 줍니다.
+            onClick={() => onRate(num)} // 여기서 클릭 이벤트를 처리합니다.
+            className={`cursor-pointer transition-colors ${
+              num <= rating
+                ? "fill-yellow-400 text-yellow-400"
+                : "text-neutral-200"
+            }`}
+          />
         ))}
       </div>
     );
   }
+
   function ActionButton({
     label,
     Icon,
