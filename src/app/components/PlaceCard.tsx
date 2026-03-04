@@ -15,7 +15,8 @@ type EditField = "title" | "category" | "subtitle" | null;
 
 export default function PlaceCard() {
   const [data, setData] = useState({
-    imageUrl: "/riku.jpg",
+    imageUrl:
+      "https://ojsfile.ohmynews.com/STD_IMG_FILE/2012/0810/IE001475335_STD.JPG",
     title: "내 이름은 김삼순",
     category: "드라마 김삼순",
     subtitle: "돈 주면 다 합니다",
@@ -72,17 +73,25 @@ export default function PlaceCard() {
       alert("이미지가 아직 로딩 중입니다!");
       return;
     }
-    // 0.2초 정도 살짝 기다려주는 센스 (렌더링 안정화)
-    await new Promise((resolve) => setTimeout(resolve, 200));
 
     try {
+      // 💡 캡처 전 아주 짧은 대기 시간을 주어 렌더링을 안정화합니다.
+      await new Promise((r) => setTimeout(r, 300));
+
       // cacheBust를 true로 설정하여 이미지 캐시 문제를 방지합니다.
       const dataUrl = await toPng(cardRef.current, {
         cacheBust: true,
         pixelRatio: 2, // 모바일 화질 보정
         skipFonts: true, // 폰트 로딩 문제로 인한 깨짐 방지
         includeQueryParams: true,
+        backgroundColor: "#ffffff", // 배경색 명시 (검은 화면 방지)
+        ...({
+          useCORS: true,
+        } as any),
       });
+
+      // 만약 dataUrl이 너무 짧다면(캡처 실패) 에러 처리
+      if (dataUrl.length < 1000) throw new Error("이미지 생성 실패");
 
       const res = await fetch(dataUrl);
       const blob = await res.blob();
@@ -122,6 +131,8 @@ export default function PlaceCard() {
             className="w-full h-full object-cover"
             crossOrigin="anonymous"
             onLoad={() => setIsImageLoaded(true)} // 이미지 로딩 완료 확인
+            // 이미지 소스가 바뀔 때마다 상태 초기화
+            key={data.imageUrl}
           />
 
           {/* hover overlay */}
