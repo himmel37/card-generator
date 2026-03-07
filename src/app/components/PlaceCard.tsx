@@ -375,7 +375,7 @@ function roundRect(
 // ─── 메인 컴포넌트 ───────────────────────────────────────
 export default function PlaceCard(): ReactElement {
   const [data, setData] = useState({
-    imageUrl: "/IMG_1005.jpg",
+    imageUrl: "/cafe.jpg",
     title: "Two Hearts Bakery Cafe",
     category: "Cafe",
     subtitle: "오리가 귀여움",
