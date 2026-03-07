@@ -163,7 +163,7 @@ async function drawCard(data: {
   infoH += 36; // 별점
   if (data.category) infoH += 26;
   if (data.subtitle) infoH += 24;
-  infoH += 16 + 48 + PADDING; // 버튼 영역
+  infoH += 16 + 40 + PADDING; // 버튼 영역
 
   const TOTAL_H = IMG_H + infoH - OVERLAP;
 
@@ -290,8 +290,8 @@ async function drawCard(data: {
   }
 
   // ── 액션 버튼 4개
-  const btnY = textY + 20;
-  const btnH = 44;
+  const btnY = textY + 16;
+  const btnH = 40;
   const btnGap = 8;
   const btnW = (W - PADDING * 2 - btnGap * 3) / 4;
   const actionButtons = [
@@ -304,24 +304,25 @@ async function drawCard(data: {
   actionButtons.forEach((btn, i) => {
     const bx = PADDING + i * (btnW + btnGap);
 
-    // 버튼 배경
-    roundRect(ctx, bx, btnY, btnW, btnH, 14);
+    // 버튼 배경 (rounded-2xl = 16px)
+    roundRect(ctx, bx, btnY, btnW, btnH, 16);
     ctx.fillStyle = btn.dark ? "#0f766e" : "#e0f2fe";
     ctx.fill();
 
-    // 아이콘
-    const iconSize = 16;
+    // 아이콘 + 텍스트 중앙 정렬
+    const iconSize = 15;
     const iconColor = btn.dark ? "#ffffff" : "#0369a1";
-    const iconX =
-      bx + btnW / 2 - (iconSize + 4 + ctx.measureText(btn.label).width) / 2;
-    const iconY = btnY + btnH / 2 - iconSize / 2;
-    drawSvgIcon(ctx, btn.icon, iconX, iconY, iconSize, iconColor);
+    ctx.font = `500 12px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif`;
+    const textW = ctx.measureText(btn.label).width;
+    const totalW = iconSize + 4 + textW;
+    const startX = bx + (btnW - totalW) / 2;
+    const iconY = btnY + (btnH - iconSize) / 2;
 
-    // 버튼 텍스트
-    ctx.font = `500 13px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif`;
+    drawSvgIcon(ctx, btn.icon, startX, iconY, iconSize, iconColor);
+
     ctx.fillStyle = iconColor;
     ctx.textAlign = "left";
-    ctx.fillText(btn.label, iconX + iconSize + 4, btnY + btnH / 2 + 5);
+    ctx.fillText(btn.label, startX + iconSize + 4, btnY + btnH / 2 + 4);
   });
   ctx.textAlign = "left";
 
