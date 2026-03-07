@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { toPng } from "html-to-image";
 import {
   Bookmark,
@@ -16,11 +16,10 @@ type EditField = "title" | "category" | "subtitle" | null;
 
 export default function PlaceCard() {
   const [data, setData] = useState({
-    imageUrl:
-      "https://ojsfile.ohmynews.com/STD_IMG_FILE/2012/0810/IE001475335_STD.JPG",
+    imageUrl: "/samsoon.jpg",
     title: "내 이름은 김삼순",
     category: "드라마 김삼순",
-    subtitle: "돈 주면 다 합니다",
+    subtitle: "단 한번도 사랑을 쉽게 해본 적 없어요",
     rating: 5.0,
     reviewCount: 9999,
   });
@@ -33,6 +32,13 @@ export default function PlaceCard() {
   const fileRef = useRef<HTMLInputElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    if (imgRef.current?.complete) {
+      setIsImageLoaded(true);
+    }
+  }, []);
 
   function startEdit(field: EditField) {
     if (!field) return;
@@ -43,110 +49,140 @@ export default function PlaceCard() {
 
   function commit() {
     if (!editing) return;
-
     const value = draft.trim();
-
-    setData((prev) => ({
-      ...prev,
-      [editing]: value || undefined,
-    }));
-
+    setData((prev) => ({ ...prev, [editing]: value || undefined }));
     setEditing(null);
   }
 
   function handleFile(file: File | null) {
     if (!file) return;
-
     const reader = new FileReader();
-
     reader.onloadend = () => {
-      setData((prev) => ({
-        ...prev,
-        imageUrl: reader.result as string,
-      }));
+      setData((prev) => ({ ...prev, imageUrl: reader.result as string }));
     };
-
     reader.readAsDataURL(file);
   }
 
-  async function handleDownload() {
-    if (!cardRef.current || !isImageLoaded) {
-      alert("이미지가 아직 로딩 중입니다!");
-      return;
-    }
+  // 카드를 PNG dataUrl로 변환하는 공통 함수
+  async function captureCard(): Promise<string> {
+    if (!cardRef.current) throw new Error("카드 요소를 찾을 수 없습니다.");
 
+    const isActuallyLoaded = imgRef.current?.complete || isImageLoaded;
+    if (!isActuallyLoaded) throw new Error("이미지 로딩 중");
+
+    await new Promise((r) => setTimeout(r, 800));
+
+    const node = cardRef.current;
+    const { width, height } = node.getBoundingClientRect();
+
+    // 폰트 미리 로드 (캡처 전에 document에서 사용 중인 폰트를 강제 로드)
+    await document.fonts.ready;
+
+    return toPng(node, {
+      cacheBust: true,
+      pixelRatio: 2,
+      // 투명 배경으로 → 둥근 모서리가 투명하게 잘림
+      backgroundColor: "transparent",
+      skipFonts: false, // 폰트 유지
+      width,
+      height,
+      style: {
+        transform: "scale(1)",
+        borderRadius: "24px", // rounded-3xl = 1.5rem = 24px
+        overflow: "hidden",
+      },
+      useCORS: true,
+      allowTaint: true,
+    } as any);
+  }
+
+  // 💾 저장: 모바일/데스크탑 모두 PNG 다운로드
+  async function handleSave() {
     try {
-      // 💡 캡처 전 아주 짧은 대기 시간을 주어 렌더링을 안정화합니다.
-      await new Promise((r) => setTimeout(r, 300));
+      const dataUrl = await captureCard();
 
-      // cacheBust를 true로 설정하여 이미지 캐시 문제를 방지합니다.
-      const dataUrl = await toPng(cardRef.current, {
-        cacheBust: true,
-        pixelRatio: 2, // 모바일 화질 보정
-        skipFonts: true, // 폰트 로딩 문제로 인한 깨짐 방지
-        includeQueryParams: true,
-        backgroundColor: "#ffffff", // 배경색 명시 (검은 화면 방지)
-        ...({
-          useCORS: true,
-        } as any),
-      });
+      const link = document.createElement("a");
+      link.download = `${data.title || "card"}.png`;
+      link.href = dataUrl;
+      link.click();
+    } catch (err: any) {
+      if (err?.message === "이미지 로딩 중") {
+        alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
+      } else {
+        console.error("저장 실패:", err);
+        alert("저장에 실패했습니다. 스크린샷을 이용해 주세요.");
+      }
+    }
+  }
 
-      // 만약 dataUrl이 너무 짧다면(캡처 실패) 에러 처리
-      if (dataUrl.length < 1000) throw new Error("이미지 생성 실패");
+  // 📤 공유: 모바일은 Web Share API, 데스크탑은 클립보드 복사
+  async function handleShare() {
+    try {
+      const dataUrl = await captureCard();
 
+      // Blob & File 변환
       const res = await fetch(dataUrl);
       const blob = await res.blob();
-      const file = new File([blob], "card.png", { type: "image/png" });
+      const file = new File([blob], `${data.title || "card"}.png`, {
+        type: "image/png",
+      });
 
-      if (
-        typeof navigator !== "undefined" &&
-        navigator.share &&
-        navigator.canShare &&
-        navigator.canShare({ files: [file] })
-      ) {
+      // 모바일: Web Share API (파일 공유 지원 여부 확인)
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
-          title: "카드 저장",
+          title: data.title,
         });
         return;
       }
 
+      // 데스크탑 fallback: 클립보드에 이미지 복사
+      if (navigator.clipboard && window.ClipboardItem) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ "image/png": blob }),
+        ]);
+        alert("이미지가 클립보드에 복사되었습니다! (Ctrl+V로 붙여넣기)");
+        return;
+      }
+
+      // 최후 fallback: 다운로드로 대체
+      alert("공유가 지원되지 않는 환경입니다. 이미지를 다운로드합니다.");
       const link = document.createElement("a");
+      link.download = `${data.title || "card"}.png`;
       link.href = dataUrl;
-      link.download = "card.png";
       link.click();
-    } catch (err) {
-      console.error("저장 중 오류 발생:", err);
-      alert("이미지 저장에 실패했습니다.");
+    } catch (err: any) {
+      if (err?.name === "AbortError") return; // 사용자가 공유 취소한 경우
+      if (err?.message === "이미지 로딩 중") {
+        alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
+      } else {
+        console.error("공유 실패:", err);
+        alert("공유에 실패했습니다. 스크린샷을 이용해 주세요.");
+      }
     }
   }
 
-  // 별점 수정 함수
-  const handleRating = (rate: number) => {
-    setData((prev) => ({ ...prev, rating: rate }));
-  };
-
-  // 리뷰 수 수정 함수
-  const handleReviewChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    let val = parseInt(e.target.value.replace(/[^0-9]/g, ""));
-    if (isNaN(val)) val = 0;
-    if (val > 9999) val = 9999;
-    setData((prev) => ({ ...prev, reviewCount: val }));
-  };
-
   return (
-    <div ref={cardRef} className="rounded-3xl overflow-hidden bg-white">
+    <div
+      ref={cardRef}
+      className="rounded-3xl overflow-hidden bg-white"
+      style={{ isolation: "isolate" }}
+    >
       <div className="relative w-full bg-black rounded-3xl overflow-hidden shadow-2xl">
         {/* 📷 이미지 영역 */}
         <div className="relative aspect-[390/500] group">
           <img
+            ref={imgRef}
             src={data.imageUrl}
             alt=""
             className="w-full h-full object-cover"
             crossOrigin="anonymous"
-            onLoad={() => setIsImageLoaded(true)} // 이미지 로딩 완료 확인
-            // 이미지 소스가 바뀔 때마다 상태 초기화
+            onLoad={() => setIsImageLoaded(true)}
             key={data.imageUrl}
+            onError={() => {
+              console.error("이미지 로드 실패");
+              setIsImageLoaded(false);
+            }}
           />
 
           {/* hover overlay */}
@@ -195,10 +231,10 @@ export default function PlaceCard() {
               </h1>
             )}
             <div className="flex items-center gap-3">
-              <CircleIconButton label="북마크" onClick={handleDownload}>
+              <CircleIconButton label="북마크" onClick={handleSave}>
                 <Bookmark size={18} />
               </CircleIconButton>
-              <CircleIconButton label="공유" onClick={handleDownload}>
+              <CircleIconButton label="공유" onClick={handleShare}>
                 <Share2 size={18} />
               </CircleIconButton>
               <CircleIconButton label="삭제" onClick={() => {}}>
@@ -206,6 +242,7 @@ export default function PlaceCard() {
               </CircleIconButton>
             </div>
           </div>
+
           {/* ⭐ 별점 + 리뷰 수정 */}
           <div className="flex items-center gap-2 mt-2">
             <div className="flex gap-0.5">
@@ -224,7 +261,12 @@ export default function PlaceCard() {
                 type="number"
                 className="w-16 text-sm border-b border-teal-500 outline-none"
                 value={data.reviewCount}
-                onChange={handleReviewChange}
+                onChange={(e) => {
+                  let val = parseInt(e.target.value.replace(/[^0-9]/g, ""));
+                  if (isNaN(val)) val = 0;
+                  if (val > 9999) val = 9999;
+                  setData((prev) => ({ ...prev, reviewCount: val }));
+                }}
                 onBlur={() => setEditingReview(false)}
               />
             ) : (
@@ -236,6 +278,7 @@ export default function PlaceCard() {
               </span>
             )}
           </div>
+
           {/* 카테고리 */}
           <div className="mt-1">
             {editing === "category" ? (
@@ -299,6 +342,7 @@ export default function PlaceCard() {
               </button>
             )}
           </div>
+
           {/* 🔘 액션 버튼들 */}
           <div className="mt-2 grid grid-cols-4 gap-2">
             <ActionButton
@@ -311,13 +355,13 @@ export default function PlaceCard() {
               label="저장"
               Icon={Bookmark}
               variant="skyBlue"
-              onClick={handleDownload}
+              onClick={handleSave}
             />
             <ActionButton
               label="공유"
               Icon={Share}
               variant="skyBlue"
-              onClick={handleDownload}
+              onClick={handleShare}
             />
           </div>
         </div>
@@ -337,8 +381,8 @@ export default function PlaceCard() {
         {[1, 2, 3, 4, 5].map((num) => (
           <Star
             key={num}
-            size={18} // 여기서 size를 줍니다.
-            onClick={() => onRate(num)} // 여기서 클릭 이벤트를 처리합니다.
+            size={18}
+            onClick={() => onRate(num)}
             className={`cursor-pointer transition-colors ${
               num <= rating
                 ? "fill-yellow-400 text-yellow-400"
@@ -363,12 +407,10 @@ export default function PlaceCard() {
   }) {
     const base =
       "flex items-center justify-center w-full rounded-2xl transition active:scale-[0.97] p-2 gap-1";
-
     const styles = {
       darkGreen: "bg-teal-700 text-white",
       skyBlue: "bg-sky-100 text-sky-700",
     };
-
     return (
       <button
         type="button"
