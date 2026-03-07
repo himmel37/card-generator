@@ -18,40 +18,6 @@ type EditField = "title" | "category" | "subtitle" | null;
 // ─── 유틸 ───────────────────────────────────────────────
 const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
-// oklab/oklch 등 미지원 CSS 색상을 hex로 치환 (html-to-image Safari 대응)
-function patchUnsupportedColors(node: HTMLElement) {
-  const all = node.querySelectorAll("*");
-  const elements = [node, ...Array.from(all)] as HTMLElement[];
-
-  elements.forEach((el) => {
-    const style = el.style;
-    const computed = window.getComputedStyle(el);
-
-    const props = [
-      "color",
-      "backgroundColor",
-      "borderColor",
-      "borderTopColor",
-      "borderRightColor",
-      "borderBottomColor",
-      "borderLeftColor",
-      "outlineColor",
-      "boxShadow",
-    ] as const;
-
-    props.forEach((prop) => {
-      const value = computed[prop];
-      if (value && (value.includes("oklab") || value.includes("oklch"))) {
-        // oklab/oklch → 투명 또는 fallback 색상으로 대체
-        // 배경색이면 white, 텍스트면 black, 나머지는 transparent
-        if (prop === "backgroundColor") style[prop] = "#ffffff";
-        else if (prop === "color") style[prop] = "#000000";
-        else style[prop] = "transparent";
-      }
-    });
-  });
-}
-
 // ─── 서브 컴포넌트 ───────────────────────────────────────
 function Stars({
   rating,
@@ -229,9 +195,6 @@ export default function PlaceCard(): ReactElement {
 
     await document.fonts.ready;
 
-    // oklab 등 미지원 색상 패치
-    patchUnsupportedColors(cardRef.current);
-
     const { width, height } = cardRef.current.getBoundingClientRect();
 
     const dataUrl = await toPng(cardRef.current, {
@@ -248,6 +211,25 @@ export default function PlaceCard(): ReactElement {
       },
       useCORS: true,
       allowTaint: true,
+      // oklab 등 미지원 색상이 포함된 stylesheet 건너뜀
+      filter: (node: HTMLElement) => {
+        if (node.tagName === "STYLE") {
+          const content = node.textContent || "";
+          if (content.includes("oklab") || content.includes("oklch"))
+            return false;
+        }
+        if (node.tagName === "LINK") {
+          // Tailwind CDN stylesheet 등 외부 CSS는 건너뜀
+          const rel = node.getAttribute("rel");
+          const href = node.getAttribute("href") || "";
+          if (
+            rel === "stylesheet" &&
+            (href.includes("tailwind") || href.includes("cdn"))
+          )
+            return false;
+        }
+        return true;
+      },
     } as any);
 
     // 원본 src 복원
@@ -288,6 +270,9 @@ export default function PlaceCard(): ReactElement {
   async function handleSave() {
     try {
       const { dataUrl, file } = await captureAsFile();
+
+      // 임시 디버그
+      window.open(dataUrl, "_blank");
 
       if (isMobile() && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: data.title });
