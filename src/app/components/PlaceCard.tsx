@@ -232,8 +232,8 @@ export default function PlaceCard() {
     if (err?.message === "이미지 로딩 중") {
       alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
     } else {
-      console.error(`${action} 실패:`, err);
-      alert(`${action}에 실패했습니다. 스크린샷을 이용해 주세요.`);
+      // 에러 내용 그대로 alert으로 보여주기
+      alert(`${action} 실패: ${err?.name} / ${err?.message} / ${String(err)}`);
     }
   }
 
