@@ -151,8 +151,16 @@ export default function PlaceCard() {
     reader.readAsDataURL(file);
   }
 
-  // ─── 이미지를 canvas 경유로 base64 변환 (CORS 우회) ───
-  async function toBase64ViaCanvas(src: string): Promise<string> {
+  // ─── 이미지 → base64 변환 (CORS 우회) ─────────────────
+  async function toBase64(src: string): Promise<string> {
+    // 이미 base64인 경우 (FileReader로 업로드한 이미지) 그대로 반환
+    if (src.startsWith("data:")) return src;
+
+    // 상대경로 → 절대 URL 변환 (모바일에서 /samsoon.jpg 같은 경로 대응)
+    const absoluteSrc = src.startsWith("http")
+      ? src
+      : `${window.location.origin}${src}`;
+
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -163,24 +171,10 @@ export default function PlaceCard() {
         const ctx = canvas.getContext("2d");
         if (!ctx) return reject(new Error("canvas context 없음"));
         ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/png"));
+        resolve(canvas.toDataURL("image/jpeg", 0.95));
       };
-      img.onerror = () => {
-        // crossOrigin 없이 재시도 (same-origin 이미지 대응)
-        const fallback = new Image();
-        fallback.onload = () => {
-          const canvas = document.createElement("canvas");
-          canvas.width = fallback.naturalWidth;
-          canvas.height = fallback.naturalHeight;
-          const ctx = canvas.getContext("2d");
-          if (!ctx) return reject(new Error("canvas context 없음"));
-          ctx.drawImage(fallback, 0, 0);
-          resolve(canvas.toDataURL("image/png"));
-        };
-        fallback.onerror = reject;
-        fallback.src = src;
-      };
-      img.src = src + (src.includes("?") ? "&" : "?") + "_cb=" + Date.now();
+      img.onerror = reject;
+      img.src = absoluteSrc + "?_cb=" + Date.now();
     });
   }
 
@@ -191,17 +185,18 @@ export default function PlaceCard() {
     const isActuallyLoaded = imgRef.current?.complete || isImageLoaded;
     if (!isActuallyLoaded) throw new Error("이미지 로딩 중");
 
-    // 이미지를 canvas 경유 base64로 교체 → 모바일 CORS 까만 이미지 방지
+    // 캡처 전 이미지를 base64로 교체 → 모바일 CORS 까만 이미지 방지
     const originalSrc = data.imageUrl;
-    let base64Src = originalSrc;
     try {
-      base64Src = await toBase64ViaCanvas(originalSrc);
+      const base64Src = await toBase64(originalSrc);
       if (imgRef.current) imgRef.current.src = base64Src;
+      // img src 교체 후 렌더링 반영 대기
+      await new Promise((r) => setTimeout(r, 300));
     } catch {
       // 변환 실패 시 원본 그대로 진행
     }
 
-    await new Promise((r) => setTimeout(r, 800));
+    await new Promise((r) => setTimeout(r, 500));
     await document.fonts.ready;
 
     const node = cardRef.current;
