@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect } from "react";
-import { toPng } from "html-to-image";
+import html2canvas from "html2canvas";
 import {
   Bookmark,
   Share2,
@@ -185,43 +185,30 @@ export default function PlaceCard() {
     const isActuallyLoaded = imgRef.current?.complete || isImageLoaded;
     if (!isActuallyLoaded) throw new Error("이미지 로딩 중");
 
-    // 캡처 전 이미지를 base64로 교체 → 모바일 CORS 까만 이미지 방지
+    // 캡처 전 이미지를 base64로 교체 → Safari CORS 까만 이미지 방지
     const originalSrc = data.imageUrl;
     try {
       const base64Src = await toBase64(originalSrc);
       if (imgRef.current) imgRef.current.src = base64Src;
-      // img src 교체 후 렌더링 반영 대기
       await new Promise((r) => setTimeout(r, 300));
     } catch {
       // 변환 실패 시 원본 그대로 진행
     }
 
-    await new Promise((r) => setTimeout(r, 500));
     await document.fonts.ready;
 
-    const node = cardRef.current;
-    const { width, height } = node.getBoundingClientRect();
-
-    const dataUrl = await toPng(node, {
-      cacheBust: true,
-      pixelRatio: 2,
-      backgroundColor: "transparent",
-      skipFonts: false,
-      width,
-      height,
-      style: {
-        transform: "scale(1)",
-        borderRadius: "24px",
-        overflow: "hidden",
-      },
+    const canvas = await html2canvas(cardRef.current, {
+      scale: 2,
       useCORS: true,
       allowTaint: true,
-    } as any);
+      backgroundColor: null, // 투명 배경 → 둥근 모서리 유지
+      logging: false,
+    });
 
     // 캡처 후 원본 src 복원
     if (imgRef.current) imgRef.current.src = originalSrc;
 
-    return dataUrl;
+    return canvas.toDataURL("image/png");
   }
 
   // dataUrl → Blob/File 변환 공통 함수
