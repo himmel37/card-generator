@@ -96,16 +96,34 @@ export default function PlaceCard() {
     } as any);
   }
 
-  // 💾 저장: 모바일/데스크탑 모두 PNG 다운로드
+  // 모바일 여부 감지
+  const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+  // 💾 저장: 모바일은 Web Share API, 데스크탑은 <a download>
   async function handleSave() {
     try {
       const dataUrl = await captureCard();
 
+      if (isMobile()) {
+        // 모바일: Web Share API → 갤러리 저장
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        const file = new File([blob], `${data.title || "card"}.png`, {
+          type: "image/png",
+        });
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: data.title });
+          return;
+        }
+      }
+
+      // 데스크탑 (또는 Web Share 미지원 모바일): <a download>
       const link = document.createElement("a");
       link.download = `${data.title || "card"}.png`;
       link.href = dataUrl;
       link.click();
     } catch (err: any) {
+      if (err?.name === "AbortError") return;
       if (err?.message === "이미지 로딩 중") {
         alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
       } else {
