@@ -159,6 +159,21 @@ export default function PlaceCard(): ReactElement {
       ? src
       : `${window.location.origin}${src}`;
 
+    // 전략 1: fetch로 blob 변환 (가장 안정적)
+    try {
+      const res = await fetch(absoluteSrc, { cache: "no-store" });
+      const blob = await res.blob();
+      return await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch {
+      // fetch 실패 시 canvas 방식으로 fallback
+    }
+
+    // 전략 2: canvas로 직접 그리기
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -187,10 +202,20 @@ export default function PlaceCard(): ReactElement {
     const originalSrc = data.imageUrl;
     try {
       const base64Src = await toBase64(originalSrc);
-      if (imgRef.current) imgRef.current.src = base64Src;
-      await new Promise((r) => setTimeout(r, 300));
-    } catch {
-      // 변환 실패 시 원본 그대로
+      if (imgRef.current) {
+        // src 교체 후 실제 로드 완료까지 대기
+        await new Promise<void>((resolve) => {
+          if (!imgRef.current) return resolve();
+          imgRef.current.onload = () => resolve();
+          imgRef.current.onerror = () => resolve(); // 실패해도 진행
+          imgRef.current.src = base64Src;
+          // 이미 캐시된 경우 onload가 안 fires되므로 complete 체크
+          if (imgRef.current.complete) resolve();
+        });
+      }
+    } catch (e) {
+      // 임시 디버그: 변환 실패 원인 표시
+      alert(`toBase64 실패: ${(e as Error)?.message}`);
     }
 
     await document.fonts.ready;
@@ -200,7 +225,7 @@ export default function PlaceCard(): ReactElement {
     const dataUrl = await toPng(cardRef.current, {
       cacheBust: true,
       pixelRatio: 2,
-      backgroundColor: "transparent",
+      backgroundColor: "#ffffff",
       skipFonts: false,
       width,
       height,
@@ -270,9 +295,6 @@ export default function PlaceCard(): ReactElement {
   async function handleSave() {
     try {
       const { dataUrl, file } = await captureAsFile();
-
-      // 임시 디버그
-      window.open(dataUrl, "_blank");
 
       if (isMobile() && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: data.title });
