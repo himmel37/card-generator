@@ -12,8 +12,93 @@ import {
   Star,
 } from "lucide-react";
 
+// ─── 타입 ───────────────────────────────────────────────
 type EditField = "title" | "category" | "subtitle" | null;
 
+// ─── 유틸 ───────────────────────────────────────────────
+const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+// ─── 서브 컴포넌트 ───────────────────────────────────────
+function Stars({
+  rating,
+  onRate,
+}: {
+  rating: number;
+  onRate: (n: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((num) => (
+        <Star
+          key={num}
+          size={18}
+          onClick={() => onRate(num)}
+          className={`cursor-pointer transition-colors ${
+            num <= rating
+              ? "fill-yellow-400 text-yellow-400"
+              : "text-neutral-200"
+          }`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ActionButton({
+  label,
+  Icon,
+  variant,
+  onClick,
+}: {
+  label: string;
+  Icon: React.ComponentType<{ size?: number; className?: string }>;
+  variant: "darkGreen" | "skyBlue";
+  onClick?: () => void;
+}) {
+  const base =
+    "flex items-center justify-center w-full rounded-2xl transition active:scale-[0.97] p-2 gap-1";
+  const styles = {
+    darkGreen: "bg-teal-700 text-white",
+    skyBlue: "bg-sky-100 text-sky-700",
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`${base} ${styles[variant]}`}
+    >
+      <Icon className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
+      <span className="text-[10px] sm:text-xs md:text-sm whitespace-nowrap">
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function CircleIconButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick?: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex items-center justify-center gap-2 rounded-full
+        px-2 py-2 text-sm font-medium
+        active:scale-[0.97] transition bg-gray-200 text-gray-700"
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─── 메인 컴포넌트 ───────────────────────────────────────
 export default function PlaceCard() {
   const [data, setData] = useState({
     imageUrl: "/samsoon.jpg",
@@ -40,6 +125,7 @@ export default function PlaceCard() {
     }
   }, []);
 
+  // ─── 편집 ──────────────────────────────────────────────
   function startEdit(field: EditField) {
     if (!field) return;
     setEditing(field);
@@ -54,16 +140,18 @@ export default function PlaceCard() {
     setEditing(null);
   }
 
+  // ─── 이미지 업로드 ─────────────────────────────────────
   function handleFile(file: File | null) {
     if (!file) return;
     const reader = new FileReader();
     reader.onloadend = () => {
+      setIsImageLoaded(false);
       setData((prev) => ({ ...prev, imageUrl: reader.result as string }));
     };
     reader.readAsDataURL(file);
   }
 
-  // 카드를 PNG dataUrl로 변환하는 공통 함수
+  // ─── 캡처 공통 로직 ────────────────────────────────────
   async function captureCard(): Promise<string> {
     if (!cardRef.current) throw new Error("카드 요소를 찾을 수 없습니다.");
 
@@ -71,24 +159,21 @@ export default function PlaceCard() {
     if (!isActuallyLoaded) throw new Error("이미지 로딩 중");
 
     await new Promise((r) => setTimeout(r, 800));
+    await document.fonts.ready;
 
     const node = cardRef.current;
     const { width, height } = node.getBoundingClientRect();
 
-    // 폰트 미리 로드 (캡처 전에 document에서 사용 중인 폰트를 강제 로드)
-    await document.fonts.ready;
-
     return toPng(node, {
       cacheBust: true,
       pixelRatio: 2,
-      // 투명 배경으로 → 둥근 모서리가 투명하게 잘림
       backgroundColor: "transparent",
-      skipFonts: false, // 폰트 유지
+      skipFonts: false,
       width,
       height,
       style: {
         transform: "scale(1)",
-        borderRadius: "24px", // rounded-3xl = 1.5rem = 24px
+        borderRadius: "24px",
         overflow: "hidden",
       },
       useCORS: true,
@@ -96,65 +181,65 @@ export default function PlaceCard() {
     } as any);
   }
 
-  // 모바일 여부 감지
-  const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  // dataUrl → Blob/File 변환 공통 함수
+  async function captureAsFile(): Promise<{
+    dataUrl: string;
+    blob: Blob;
+    file: File;
+  }> {
+    const dataUrl = await captureCard();
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], `${data.title || "card"}.png`, {
+      type: "image/png",
+    });
+    return { dataUrl, blob, file };
+  }
 
-  // 💾 저장: 모바일은 Web Share API, 데스크탑은 <a download>
+  // ─── 에러 핸들러 ───────────────────────────────────────
+  function handleCaptureError(err: any, action: "저장" | "공유") {
+    if (err?.name === "AbortError") return;
+    if (err?.message === "이미지 로딩 중") {
+      alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
+    } else {
+      console.error(`${action} 실패:`, err);
+      alert(`${action}에 실패했습니다. 스크린샷을 이용해 주세요.`);
+    }
+  }
+
+  // ─── 저장 ──────────────────────────────────────────────
   async function handleSave() {
     try {
-      const dataUrl = await captureCard();
+      const { dataUrl, file } = await captureAsFile();
 
-      if (isMobile()) {
-        // 모바일: Web Share API → 갤러리 저장
-        const res = await fetch(dataUrl);
-        const blob = await res.blob();
-        const file = new File([blob], `${data.title || "card"}.png`, {
-          type: "image/png",
-        });
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({ files: [file], title: data.title });
-          return;
-        }
+      // 모바일: Web Share API → 갤러리 저장
+      if (isMobile() && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: data.title });
+        return;
       }
 
-      // 데스크탑 (또는 Web Share 미지원 모바일): <a download>
+      // 데스크탑: <a download>
       const link = document.createElement("a");
       link.download = `${data.title || "card"}.png`;
       link.href = dataUrl;
       link.click();
-    } catch (err: any) {
-      if (err?.name === "AbortError") return;
-      if (err?.message === "이미지 로딩 중") {
-        alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
-      } else {
-        console.error("저장 실패:", err);
-        alert("저장에 실패했습니다. 스크린샷을 이용해 주세요.");
-      }
+    } catch (err) {
+      handleCaptureError(err, "저장");
     }
   }
 
-  // 📤 공유: 모바일은 Web Share API, 데스크탑은 클립보드 복사
+  // ─── 공유 ──────────────────────────────────────────────
   async function handleShare() {
     try {
-      const dataUrl = await captureCard();
+      const { dataUrl, blob, file } = await captureAsFile();
 
-      // Blob & File 변환
-      const res = await fetch(dataUrl);
-      const blob = await res.blob();
-      const file = new File([blob], `${data.title || "card"}.png`, {
-        type: "image/png",
-      });
-
-      // 모바일: Web Share API (파일 공유 지원 여부 확인)
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: data.title,
-        });
+      // 모바일: Web Share API
+      if (isMobile() && navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: data.title });
         return;
       }
 
-      // 데스크탑 fallback: 클립보드에 이미지 복사
+      // 데스크탑: 클립보드 복사
       if (navigator.clipboard && window.ClipboardItem) {
         await navigator.clipboard.write([
           new ClipboardItem({ "image/png": blob }),
@@ -163,23 +248,18 @@ export default function PlaceCard() {
         return;
       }
 
-      // 최후 fallback: 다운로드로 대체
+      // 최후 fallback: 다운로드
       alert("공유가 지원되지 않는 환경입니다. 이미지를 다운로드합니다.");
       const link = document.createElement("a");
       link.download = `${data.title || "card"}.png`;
       link.href = dataUrl;
       link.click();
-    } catch (err: any) {
-      if (err?.name === "AbortError") return; // 사용자가 공유 취소한 경우
-      if (err?.message === "이미지 로딩 중") {
-        alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
-      } else {
-        console.error("공유 실패:", err);
-        alert("공유에 실패했습니다. 스크린샷을 이용해 주세요.");
-      }
+    } catch (err) {
+      handleCaptureError(err, "공유");
     }
   }
 
+  // ─── 렌더 ──────────────────────────────────────────────
   return (
     <div
       ref={cardRef}
@@ -195,26 +275,19 @@ export default function PlaceCard() {
             alt=""
             className="w-full h-full object-cover"
             crossOrigin="anonymous"
-            onLoad={() => setIsImageLoaded(true)}
             key={data.imageUrl}
-            onError={() => {
-              console.error("이미지 로드 실패");
-              setIsImageLoaded(false);
-            }}
+            onLoad={() => setIsImageLoaded(true)}
+            onError={() => setIsImageLoaded(false)}
           />
-
-          {/* hover overlay */}
           <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
             <span className="bg-black/60 text-white text-sm px-4 py-2 rounded-full">
               사진 변경
             </span>
           </div>
-
           <button
             onClick={() => fileRef.current?.click()}
             className="absolute inset-0"
           />
-
           <input
             ref={fileRef}
             type="file"
@@ -226,8 +299,8 @@ export default function PlaceCard() {
 
         {/* 🧾 카드 영역 */}
         <div className="bg-white text-neutral-900 rounded-t-3xl -mt-16 relative z-10 p-6">
+          {/* 제목 + 아이콘 버튼 */}
           <div className="flex justify-between items-center">
-            {/* 제목 */}
             {editing === "title" ? (
               <input
                 ref={inputRef}
@@ -261,18 +334,15 @@ export default function PlaceCard() {
             </div>
           </div>
 
-          {/* ⭐ 별점 + 리뷰 수정 */}
+          {/* 별점 + 리뷰 수 */}
           <div className="flex items-center gap-2 mt-2">
-            <div className="flex gap-0.5">
-              <Stars
-                rating={data.rating}
-                onRate={(num) => setData((prev) => ({ ...prev, rating: num }))}
-              />
-            </div>
+            <Stars
+              rating={data.rating}
+              onRate={(num) => setData((prev) => ({ ...prev, rating: num }))}
+            />
             <span className="text-sm font-bold text-neutral-800">
               {data.rating.toFixed(1)}
             </span>
-
             {editingReview ? (
               <input
                 autoFocus
@@ -361,7 +431,7 @@ export default function PlaceCard() {
             )}
           </div>
 
-          {/* 🔘 액션 버튼들 */}
+          {/* 액션 버튼 */}
           <div className="mt-2 grid grid-cols-4 gap-2">
             <ActionButton
               label="경로"
@@ -386,83 +456,4 @@ export default function PlaceCard() {
       </div>
     </div>
   );
-
-  function Stars({
-    rating,
-    onRate,
-  }: {
-    rating: number;
-    onRate: (n: number) => void;
-  }) {
-    return (
-      <div className="flex items-center gap-0.5">
-        {[1, 2, 3, 4, 5].map((num) => (
-          <Star
-            key={num}
-            size={18}
-            onClick={() => onRate(num)}
-            className={`cursor-pointer transition-colors ${
-              num <= rating
-                ? "fill-yellow-400 text-yellow-400"
-                : "text-neutral-200"
-            }`}
-          />
-        ))}
-      </div>
-    );
-  }
-
-  function ActionButton({
-    label,
-    Icon,
-    variant,
-    onClick,
-  }: {
-    label: string;
-    Icon: React.ComponentType<{ size?: number; className?: string }>;
-    variant: "darkGreen" | "skyBlue";
-    onClick?: () => void;
-  }) {
-    const base =
-      "flex items-center justify-center w-full rounded-2xl transition active:scale-[0.97] p-2 gap-1";
-    const styles = {
-      darkGreen: "bg-teal-700 text-white",
-      skyBlue: "bg-sky-100 text-sky-700",
-    };
-    return (
-      <button
-        type="button"
-        onClick={onClick}
-        className={`${base} ${styles[variant]}`}
-      >
-        <Icon className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6" />
-        <span className="text-[10px] sm:text-xs md:text-sm whitespace-nowrap">
-          {label}
-        </span>
-      </button>
-    );
-  }
-
-  function CircleIconButton({
-    label,
-    onClick,
-    children,
-  }: {
-    label: string;
-    onClick?: () => void;
-    children: React.ReactNode;
-  }) {
-    return (
-      <button
-        type="button"
-        aria-label={label}
-        onClick={onClick}
-        className="flex items-center justify-center gap-2 rounded-full 
-          px-2 py-2 text-sm font-medium
-          active:scale-[0.97] transition bg-gray-200 text-gray-700"
-      >
-        {children}
-      </button>
-    );
-  }
 }
