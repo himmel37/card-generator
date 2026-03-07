@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
-import html2canvas from "html2canvas";
+import { useRef, useState, useEffect, type ReactElement } from "react";
+import { toPng } from "html-to-image";
 import {
   Bookmark,
   Share2,
@@ -18,6 +18,40 @@ type EditField = "title" | "category" | "subtitle" | null;
 // ─── 유틸 ───────────────────────────────────────────────
 const isMobile = () => /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+// oklab/oklch 등 미지원 CSS 색상을 hex로 치환 (html-to-image Safari 대응)
+function patchUnsupportedColors(node: HTMLElement) {
+  const all = node.querySelectorAll("*");
+  const elements = [node, ...Array.from(all)] as HTMLElement[];
+
+  elements.forEach((el) => {
+    const style = el.style;
+    const computed = window.getComputedStyle(el);
+
+    const props = [
+      "color",
+      "backgroundColor",
+      "borderColor",
+      "borderTopColor",
+      "borderRightColor",
+      "borderBottomColor",
+      "borderLeftColor",
+      "outlineColor",
+      "boxShadow",
+    ] as const;
+
+    props.forEach((prop) => {
+      const value = computed[prop];
+      if (value && (value.includes("oklab") || value.includes("oklch"))) {
+        // oklab/oklch → 투명 또는 fallback 색상으로 대체
+        // 배경색이면 white, 텍스트면 black, 나머지는 transparent
+        if (prop === "backgroundColor") style[prop] = "#ffffff";
+        else if (prop === "color") style[prop] = "#000000";
+        else style[prop] = "transparent";
+      }
+    });
+  });
+}
+
 // ─── 서브 컴포넌트 ───────────────────────────────────────
 function Stars({
   rating,
@@ -25,7 +59,7 @@ function Stars({
 }: {
   rating: number;
   onRate: (n: number) => void;
-}) {
+}): ReactElement {
   return (
     <div className="flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map((num) => (
@@ -54,7 +88,7 @@ function ActionButton({
   Icon: React.ComponentType<{ size?: number; className?: string }>;
   variant: "darkGreen" | "skyBlue";
   onClick?: () => void;
-}) {
+}): ReactElement {
   const base =
     "flex items-center justify-center w-full rounded-2xl transition active:scale-[0.97] p-2 gap-1";
   const styles = {
@@ -83,7 +117,7 @@ function CircleIconButton({
   label: string;
   onClick?: () => void;
   children: React.ReactNode;
-}) {
+}): ReactElement {
   return (
     <button
       type="button"
@@ -99,7 +133,7 @@ function CircleIconButton({
 }
 
 // ─── 메인 컴포넌트 ───────────────────────────────────────
-export default function PlaceCard() {
+export default function PlaceCard(): ReactElement {
   const [data, setData] = useState({
     imageUrl: "/samsoon.jpg",
     title: "내 이름은 김삼순",
@@ -153,10 +187,8 @@ export default function PlaceCard() {
 
   // ─── 이미지 → base64 변환 (CORS 우회) ─────────────────
   async function toBase64(src: string): Promise<string> {
-    // 이미 base64인 경우 (FileReader로 업로드한 이미지) 그대로 반환
     if (src.startsWith("data:")) return src;
 
-    // 상대경로 → 절대 URL 변환 (모바일에서 /samsoon.jpg 같은 경로 대응)
     const absoluteSrc = src.startsWith("http")
       ? src
       : `${window.location.origin}${src}`;
@@ -185,33 +217,46 @@ export default function PlaceCard() {
     const isActuallyLoaded = imgRef.current?.complete || isImageLoaded;
     if (!isActuallyLoaded) throw new Error("이미지 로딩 중");
 
-    // 캡처 전 이미지를 base64로 교체 → Safari CORS 까만 이미지 방지
+    // 이미지 base64 교체 (Safari CORS 대응)
     const originalSrc = data.imageUrl;
     try {
       const base64Src = await toBase64(originalSrc);
       if (imgRef.current) imgRef.current.src = base64Src;
       await new Promise((r) => setTimeout(r, 300));
     } catch {
-      // 변환 실패 시 원본 그대로 진행
+      // 변환 실패 시 원본 그대로
     }
 
     await document.fonts.ready;
 
-    const canvas = await html2canvas(cardRef.current, {
-      scale: 2,
+    // oklab 등 미지원 색상 패치
+    patchUnsupportedColors(cardRef.current);
+
+    const { width, height } = cardRef.current.getBoundingClientRect();
+
+    const dataUrl = await toPng(cardRef.current, {
+      cacheBust: true,
+      pixelRatio: 2,
+      backgroundColor: "transparent",
+      skipFonts: false,
+      width,
+      height,
+      style: {
+        transform: "scale(1)",
+        borderRadius: "24px",
+        overflow: "hidden",
+      },
       useCORS: true,
       allowTaint: true,
-      backgroundColor: null, // 투명 배경 → 둥근 모서리 유지
-      logging: false,
-    });
+    } as any);
 
-    // 캡처 후 원본 src 복원
+    // 원본 src 복원
     if (imgRef.current) imgRef.current.src = originalSrc;
 
-    return canvas.toDataURL("image/png");
+    return dataUrl;
   }
 
-  // dataUrl → Blob/File 변환 공통 함수
+  // ─── dataUrl → Blob/File 변환 ──────────────────────────
   async function captureAsFile(): Promise<{
     dataUrl: string;
     blob: Blob;
@@ -227,13 +272,15 @@ export default function PlaceCard() {
   }
 
   // ─── 에러 핸들러 ───────────────────────────────────────
-  function handleCaptureError(err: any, action: "저장" | "공유") {
-    if (err?.name === "AbortError") return;
-    if (err?.message === "이미지 로딩 중") {
+  function handleCaptureError(err: unknown, action: "저장" | "공유") {
+    if ((err as { name?: string })?.name === "AbortError") return;
+    if ((err as { message?: string })?.message === "이미지 로딩 중") {
       alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
     } else {
-      // 에러 내용 그대로 alert으로 보여주기
-      alert(`${action} 실패: ${err?.name} / ${err?.message} / ${String(err)}`);
+      console.error(`${action} 실패:`, err);
+      alert(
+        `${action} 실패: ${(err as Error)?.name} / ${(err as Error)?.message}`
+      );
     }
   }
 
@@ -242,13 +289,11 @@ export default function PlaceCard() {
     try {
       const { dataUrl, file } = await captureAsFile();
 
-      // 모바일: Web Share API → 갤러리 저장
       if (isMobile() && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: data.title });
         return;
       }
 
-      // 데스크탑: <a download>
       const link = document.createElement("a");
       link.download = `${data.title || "card"}.png`;
       link.href = dataUrl;
@@ -263,13 +308,11 @@ export default function PlaceCard() {
     try {
       const { dataUrl, blob, file } = await captureAsFile();
 
-      // 모바일: Web Share API
       if (isMobile() && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: data.title });
         return;
       }
 
-      // 데스크탑: 클립보드 복사
       if (navigator.clipboard && window.ClipboardItem) {
         await navigator.clipboard.write([
           new ClipboardItem({ "image/png": blob }),
@@ -278,7 +321,6 @@ export default function PlaceCard() {
         return;
       }
 
-      // 최후 fallback: 다운로드
       alert("공유가 지원되지 않는 환경입니다. 이미지를 다운로드합니다.");
       const link = document.createElement("a");
       link.download = `${data.title || "card"}.png`;
