@@ -163,7 +163,7 @@ async function drawCard(data: {
   infoH += 36; // 별점
   if (data.category) infoH += 26;
   if (data.subtitle) infoH += 24;
-  infoH += 16 + 40 + PADDING; // 버튼 영역
+  infoH += 16 + 40 + 10; // 버튼 영역
 
   const TOTAL_H = IMG_H + infoH - OVERLAP;
 
@@ -375,12 +375,12 @@ function roundRect(
 // ─── 메인 컴포넌트 ───────────────────────────────────────
 export default function PlaceCard(): ReactElement {
   const [data, setData] = useState({
-    imageUrl: "/samsoon.jpg",
-    title: "내 이름은 김삼순",
-    category: "드라마 김삼순",
-    subtitle: "단 한번도 사랑을 쉽게 해본 적 없어요",
-    rating: 5.0,
-    reviewCount: 9999,
+    imageUrl: "/IMG_1005.jpg",
+    title: "Two Hearts Bakery Cafe",
+    category: "Cafe",
+    subtitle: "오리가 귀여움",
+    rating: 3.0,
+    reviewCount: 1208,
   });
 
   const [editing, setEditing] = useState<EditField>(null);
