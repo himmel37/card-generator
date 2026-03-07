@@ -177,9 +177,8 @@ async function drawCard(data: {
   roundRect(ctx, 0, 0, W, TOTAL_H, RADIUS);
   ctx.clip();
 
-  // ── 배경
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, W, TOTAL_H);
+  // ── 배경 (투명 - 둥근 모서리 바깥이 깔끔하게 보임)
+  // clip()으로 이미 둥글게 잘렸으므로 별도 배경 불필요
 
   // ── 이미지
   try {
