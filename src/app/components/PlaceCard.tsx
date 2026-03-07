@@ -1,7 +1,6 @@
 "use client";
 
 import { useRef, useState, useEffect, type ReactElement } from "react";
-import { toPng } from "html-to-image";
 import {
   Bookmark,
   Share2,
@@ -98,6 +97,280 @@ function CircleIconButton({
   );
 }
 
+// ─── Lucide SVG path 데이터 ──────────────────────────────
+const LUCIDE_PATHS: Record<string, string> = {
+  bookmark: "M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z",
+  share2: "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13",
+  x: "M18 6L6 18M6 6l12 12",
+  cornerUpRight: "M15 14l5-5-5-5M4 20v-7a4 4 0 0 1 4-4h12",
+  navigation2: "M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z",
+  share: "M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8M16 6l-4-4-4 4M12 2v13",
+  starFilled:
+    "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
+};
+
+// SVG path를 Canvas에 그리는 헬퍼
+function drawSvgIcon(
+  ctx: CanvasRenderingContext2D,
+  iconKey: string,
+  x: number,
+  y: number,
+  size: number,
+  color: string,
+  filled = false
+) {
+  const pathData = LUCIDE_PATHS[iconKey];
+  if (!pathData) return;
+
+  const scale = size / 24;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  const path = new Path2D(pathData);
+  if (filled) {
+    ctx.fillStyle = color;
+    ctx.fill(path);
+  } else {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2 / scale;
+    ctx.fillStyle = "transparent";
+    ctx.stroke(path);
+  }
+  ctx.restore();
+}
+
+async function drawCard(data: {
+  imageUrl: string;
+  title: string;
+  category: string;
+  subtitle: string;
+  rating: number;
+  reviewCount: number;
+}): Promise<string> {
+  const DPR = 2;
+  const W = 390;
+
+  const IMG_H = Math.round((W * 500) / 390);
+  const OVERLAP = 64;
+  const PADDING = 24;
+  const RADIUS = 24;
+
+  // 텍스트 영역 높이 동적 계산
+  let infoH = PADDING + 24; // 제목
+  infoH += 36; // 별점
+  if (data.category) infoH += 26;
+  if (data.subtitle) infoH += 24;
+  infoH += 16 + 48 + PADDING; // 버튼 영역
+
+  const TOTAL_H = IMG_H + infoH - OVERLAP;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W * DPR;
+  canvas.height = TOTAL_H * DPR;
+  const ctx = canvas.getContext("2d")!;
+  ctx.scale(DPR, DPR);
+
+  // ── 전체 카드 클리핑
+  roundRect(ctx, 0, 0, W, TOTAL_H, RADIUS);
+  ctx.clip();
+
+  // ── 배경
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, TOTAL_H);
+
+  // ── 이미지
+  try {
+    const img = await loadImage(data.imageUrl);
+    const imgAspect = img.naturalWidth / img.naturalHeight;
+    const targetAspect = W / IMG_H;
+    let sx = 0,
+      sy = 0,
+      sw = img.naturalWidth,
+      sh = img.naturalHeight;
+    if (imgAspect > targetAspect) {
+      sw = img.naturalHeight * targetAspect;
+      sx = (img.naturalWidth - sw) / 2;
+    } else {
+      sh = img.naturalWidth / targetAspect;
+      sy = (img.naturalHeight - sh) / 2;
+    }
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, IMG_H);
+  } catch {
+    ctx.fillStyle = "#e5e7eb";
+    ctx.fillRect(0, 0, W, IMG_H);
+  }
+
+  // ── 하단 흰 카드 영역
+  const cardY = IMG_H - OVERLAP;
+  roundRect(ctx, 0, cardY, W, TOTAL_H - cardY, RADIUS);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+
+  const textX = PADDING;
+  let textY = cardY + PADDING + 18;
+
+  // ── 제목
+  ctx.fillStyle = "#171717";
+  ctx.font = `600 18px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif`;
+  ctx.fillText(data.title || "", textX, textY);
+
+  // ── 동그란 아이콘 버튼 3개 (X, 공유, 북마크 - 오른쪽부터)
+  const circleR = 17;
+  const circleGap = 8;
+  const circleY = textY - 6;
+  const circleButtons = [
+    { icon: "x", color: "#374151" },
+    { icon: "share2", color: "#374151" },
+    { icon: "bookmark", color: "#374151" },
+  ];
+
+  circleButtons.forEach((btn, i) => {
+    const cx = W - PADDING - circleR - i * (circleR * 2 + circleGap);
+    // 원 배경
+    ctx.beginPath();
+    ctx.arc(cx, circleY, circleR, 0, Math.PI * 2);
+    ctx.fillStyle = "#e5e7eb";
+    ctx.fill();
+    // 아이콘
+    const iconSize = 16;
+    drawSvgIcon(
+      ctx,
+      btn.icon,
+      cx - iconSize / 2,
+      circleY - iconSize / 2,
+      iconSize,
+      btn.color
+    );
+  });
+
+  // ── 별점
+  textY += 34;
+  const starSize = 18;
+  const starGap = 2;
+  const filledCount = Math.round(data.rating);
+  for (let i = 0; i < 5; i++) {
+    const starX = textX + i * (starSize + starGap);
+    drawSvgIcon(
+      ctx,
+      "starFilled",
+      starX,
+      textY - starSize,
+      starSize,
+      i < filledCount ? "#facc15" : "#e5e7eb",
+      true
+    );
+  }
+
+  const starEndX = textX + 5 * (starSize + starGap) + 8;
+  ctx.font = `700 14px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif`;
+  ctx.fillStyle = "#171717";
+  ctx.fillText(data.rating.toFixed(1), starEndX, textY);
+  const ratingW = ctx.measureText(data.rating.toFixed(1)).width;
+  ctx.font = `400 14px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif`;
+  ctx.fillStyle = "#a3a3a3";
+  ctx.fillText(`(리뷰 ${data.reviewCount})`, starEndX + ratingW + 6, textY);
+
+  // ── 카테고리
+  if (data.category) {
+    textY += 26;
+    ctx.font = `400 14px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif`;
+    ctx.fillStyle = "#525252";
+    ctx.fillText(data.category, textX, textY);
+  }
+
+  // ── 서브타이틀
+  if (data.subtitle) {
+    textY += 24;
+    ctx.font = `400 14px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif`;
+    ctx.fillStyle = "#737373";
+    ctx.fillText(data.subtitle, textX, textY);
+  }
+
+  // ── 액션 버튼 4개
+  const btnY = textY + 20;
+  const btnH = 44;
+  const btnGap = 8;
+  const btnW = (W - PADDING * 2 - btnGap * 3) / 4;
+  const actionButtons = [
+    { label: "경로", icon: "cornerUpRight", dark: true },
+    { label: "시작", icon: "navigation2", dark: false },
+    { label: "저장", icon: "bookmark", dark: false },
+    { label: "공유", icon: "share", dark: false },
+  ];
+
+  actionButtons.forEach((btn, i) => {
+    const bx = PADDING + i * (btnW + btnGap);
+
+    // 버튼 배경
+    roundRect(ctx, bx, btnY, btnW, btnH, 14);
+    ctx.fillStyle = btn.dark ? "#0f766e" : "#e0f2fe";
+    ctx.fill();
+
+    // 아이콘
+    const iconSize = 16;
+    const iconColor = btn.dark ? "#ffffff" : "#0369a1";
+    const iconX =
+      bx + btnW / 2 - (iconSize + 4 + ctx.measureText(btn.label).width) / 2;
+    const iconY = btnY + btnH / 2 - iconSize / 2;
+    drawSvgIcon(ctx, btn.icon, iconX, iconY, iconSize, iconColor);
+
+    // 버튼 텍스트
+    ctx.font = `500 13px -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif`;
+    ctx.fillStyle = iconColor;
+    ctx.textAlign = "left";
+    ctx.fillText(btn.label, iconX + iconSize + 4, btnY + btnH / 2 + 5);
+  });
+  ctx.textAlign = "left";
+
+  return canvas.toDataURL("image/png");
+}
+async function loadImage(src: string): Promise<HTMLImageElement> {
+  // 상대경로 → 절대 URL
+  const absoluteSrc =
+    src.startsWith("data:") || src.startsWith("http")
+      ? src
+      : `${window.location.origin}${src}`;
+
+  // fetch로 blob 변환 (CORS 우회, Safari 호환)
+  const res = await fetch(absoluteSrc, { cache: "no-store" });
+  const blob = await res.blob();
+  const blobUrl = URL.createObjectURL(blob);
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(blobUrl);
+      resolve(img);
+    };
+    img.onerror = reject;
+    img.src = blobUrl;
+  });
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
 // ─── 메인 컴포넌트 ───────────────────────────────────────
 export default function PlaceCard(): ReactElement {
   const [data, setData] = useState({
@@ -116,7 +389,6 @@ export default function PlaceCard(): ReactElement {
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
 
   useEffect(() => {
@@ -151,116 +423,11 @@ export default function PlaceCard(): ReactElement {
     reader.readAsDataURL(file);
   }
 
-  // ─── 이미지 → base64 변환 (CORS 우회) ─────────────────
-  async function toBase64(src: string): Promise<string> {
-    if (src.startsWith("data:")) return src;
-
-    const absoluteSrc = src.startsWith("http")
-      ? src
-      : `${window.location.origin}${src}`;
-
-    // 전략 1: fetch로 blob 변환 (가장 안정적)
-    try {
-      const res = await fetch(absoluteSrc, { cache: "no-store" });
-      const blob = await res.blob();
-      return await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      });
-    } catch {
-      // fetch 실패 시 canvas 방식으로 fallback
-    }
-
-    // 전략 2: canvas로 직접 그리기
-    return new Promise((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return reject(new Error("canvas context 없음"));
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL("image/jpeg", 0.95));
-      };
-      img.onerror = reject;
-      img.src = absoluteSrc + "?_cb=" + Date.now();
-    });
-  }
-
-  // ─── 캡처 공통 로직 ────────────────────────────────────
+  // ─── 캡처: Canvas로 직접 그리기 ────────────────────────
   async function captureCard(): Promise<string> {
-    if (!cardRef.current) throw new Error("카드 요소를 찾을 수 없습니다.");
-
     const isActuallyLoaded = imgRef.current?.complete || isImageLoaded;
     if (!isActuallyLoaded) throw new Error("이미지 로딩 중");
-
-    // 이미지 base64 교체 (Safari CORS 대응)
-    const originalSrc = data.imageUrl;
-    try {
-      const base64Src = await toBase64(originalSrc);
-      if (imgRef.current) {
-        // src 교체 후 실제 로드 완료까지 대기
-        await new Promise<void>((resolve) => {
-          if (!imgRef.current) return resolve();
-          imgRef.current.onload = () => resolve();
-          imgRef.current.onerror = () => resolve(); // 실패해도 진행
-          imgRef.current.src = base64Src;
-          // 이미 캐시된 경우 onload가 안 fires되므로 complete 체크
-          if (imgRef.current.complete) resolve();
-        });
-      }
-    } catch (e) {
-      // 임시 디버그: 변환 실패 원인 표시
-      alert(`toBase64 실패: ${(e as Error)?.message}`);
-    }
-
-    await document.fonts.ready;
-
-    const { width, height } = cardRef.current.getBoundingClientRect();
-
-    const dataUrl = await toPng(cardRef.current, {
-      cacheBust: true,
-      pixelRatio: 2,
-      backgroundColor: "#ffffff",
-      skipFonts: false,
-      width,
-      height,
-      style: {
-        transform: "scale(1)",
-        borderRadius: "24px",
-        overflow: "hidden",
-      },
-      useCORS: true,
-      allowTaint: true,
-      // oklab 등 미지원 색상이 포함된 stylesheet 건너뜀
-      filter: (node: HTMLElement) => {
-        if (node.tagName === "STYLE") {
-          const content = node.textContent || "";
-          if (content.includes("oklab") || content.includes("oklch"))
-            return false;
-        }
-        if (node.tagName === "LINK") {
-          // Tailwind CDN stylesheet 등 외부 CSS는 건너뜀
-          const rel = node.getAttribute("rel");
-          const href = node.getAttribute("href") || "";
-          if (
-            rel === "stylesheet" &&
-            (href.includes("tailwind") || href.includes("cdn"))
-          )
-            return false;
-        }
-        return true;
-      },
-    } as any);
-
-    // 원본 src 복원
-    if (imgRef.current) imgRef.current.src = originalSrc;
-
-    return dataUrl;
+    return drawCard(data);
   }
 
   // ─── dataUrl → Blob/File 변환 ──────────────────────────
@@ -285,9 +452,7 @@ export default function PlaceCard(): ReactElement {
       alert("이미지를 불러오는 중입니다. 잠시 후 다시 시도해 주세요!");
     } else {
       console.error(`${action} 실패:`, err);
-      alert(
-        `${action} 실패: ${(err as Error)?.name} / ${(err as Error)?.message}`
-      );
+      alert(`${action}에 실패했습니다. 스크린샷을 이용해 주세요.`);
     }
   }
 
@@ -341,7 +506,6 @@ export default function PlaceCard(): ReactElement {
   // ─── 렌더 ──────────────────────────────────────────────
   return (
     <div
-      ref={cardRef}
       className="rounded-3xl overflow-hidden bg-white"
       style={{ isolation: "isolate" }}
     >
