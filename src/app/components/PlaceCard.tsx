@@ -151,6 +151,39 @@ export default function PlaceCard() {
     reader.readAsDataURL(file);
   }
 
+  // ─── 이미지를 canvas 경유로 base64 변환 (CORS 우회) ───
+  async function toBase64ViaCanvas(src: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("canvas context 없음"));
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = () => {
+        // crossOrigin 없이 재시도 (same-origin 이미지 대응)
+        const fallback = new Image();
+        fallback.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = fallback.naturalWidth;
+          canvas.height = fallback.naturalHeight;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) return reject(new Error("canvas context 없음"));
+          ctx.drawImage(fallback, 0, 0);
+          resolve(canvas.toDataURL("image/png"));
+        };
+        fallback.onerror = reject;
+        fallback.src = src;
+      };
+      img.src = src + (src.includes("?") ? "&" : "?") + "_cb=" + Date.now();
+    });
+  }
+
   // ─── 캡처 공통 로직 ────────────────────────────────────
   async function captureCard(): Promise<string> {
     if (!cardRef.current) throw new Error("카드 요소를 찾을 수 없습니다.");
@@ -158,13 +191,23 @@ export default function PlaceCard() {
     const isActuallyLoaded = imgRef.current?.complete || isImageLoaded;
     if (!isActuallyLoaded) throw new Error("이미지 로딩 중");
 
+    // 이미지를 canvas 경유 base64로 교체 → 모바일 CORS 까만 이미지 방지
+    const originalSrc = data.imageUrl;
+    let base64Src = originalSrc;
+    try {
+      base64Src = await toBase64ViaCanvas(originalSrc);
+      if (imgRef.current) imgRef.current.src = base64Src;
+    } catch {
+      // 변환 실패 시 원본 그대로 진행
+    }
+
     await new Promise((r) => setTimeout(r, 800));
     await document.fonts.ready;
 
     const node = cardRef.current;
     const { width, height } = node.getBoundingClientRect();
 
-    return toPng(node, {
+    const dataUrl = await toPng(node, {
       cacheBust: true,
       pixelRatio: 2,
       backgroundColor: "transparent",
@@ -179,6 +222,11 @@ export default function PlaceCard() {
       useCORS: true,
       allowTaint: true,
     } as any);
+
+    // 캡처 후 원본 src 복원
+    if (imgRef.current) imgRef.current.src = originalSrc;
+
+    return dataUrl;
   }
 
   // dataUrl → Blob/File 변환 공통 함수
@@ -274,7 +322,6 @@ export default function PlaceCard() {
             src={data.imageUrl}
             alt=""
             className="w-full h-full object-cover"
-            crossOrigin="anonymous"
             key={data.imageUrl}
             onLoad={() => setIsImageLoaded(true)}
             onError={() => setIsImageLoaded(false)}
