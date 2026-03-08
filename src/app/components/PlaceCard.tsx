@@ -400,7 +400,7 @@ export default function PlaceCard(): ReactElement {
   const [editingReview, setEditingReview] = useState(false);
   const [draft, setDraft] = useState("");
   const [isImageLoaded, setIsImageLoaded] = useState(false);
-  const [showSaveSheet, setShowSaveSheet] = useState(false);
+  const [sheetMode, setSheetMode] = useState<"save" | "share" | null>(null);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -471,15 +471,13 @@ export default function PlaceCard(): ReactElement {
 
   // ─── 저장 ──────────────────────────────────────────────
   async function handleSave(storyMode = false) {
-    setShowSaveSheet(false);
+    setSheetMode(null);
     try {
       const { dataUrl, file } = await captureAsFile(storyMode);
-
       if (isMobile() && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: data.title });
         return;
       }
-
       const link = document.createElement("a");
       link.download = `${data.title || "card"}.png`;
       link.href = dataUrl;
@@ -490,15 +488,14 @@ export default function PlaceCard(): ReactElement {
   }
 
   // ─── 공유 ──────────────────────────────────────────────
-  async function handleShare() {
+  async function handleShare(storyMode = false) {
+    setSheetMode(null);
     try {
-      const { dataUrl, blob, file } = await captureAsFile();
-
+      const { dataUrl, blob, file } = await captureAsFile(storyMode);
       if (isMobile() && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: data.title });
         return;
       }
-
       if (navigator.clipboard && window.ClipboardItem) {
         await navigator.clipboard.write([
           new ClipboardItem({ "image/png": blob }),
@@ -506,7 +503,6 @@ export default function PlaceCard(): ReactElement {
         alert("이미지가 클립보드에 복사되었습니다! (Ctrl+V로 붙여넣기)");
         return;
       }
-
       alert("공유가 지원되지 않는 환경입니다. 이미지를 다운로드합니다.");
       const link = document.createElement("a");
       link.download = `${data.title || "card"}.png`;
@@ -580,11 +576,14 @@ export default function PlaceCard(): ReactElement {
             <div className="flex items-center gap-3">
               <CircleIconButton
                 label="북마크"
-                onClick={() => setShowSaveSheet(true)}
+                onClick={() => setSheetMode("save")}
               >
                 <Bookmark size={18} />
               </CircleIconButton>
-              <CircleIconButton label="공유" onClick={handleShare}>
+              <CircleIconButton
+                label="공유"
+                onClick={() => setSheetMode("share")}
+              >
                 <Share2 size={18} />
               </CircleIconButton>
               <CircleIconButton label="삭제" onClick={() => {}}>
@@ -702,23 +701,23 @@ export default function PlaceCard(): ReactElement {
               label="저장"
               Icon={Bookmark}
               variant="skyBlue"
-              onClick={() => setShowSaveSheet(true)}
+              onClick={() => setSheetMode("save")}
             />
             <ActionButton
               label="공유"
               Icon={Share}
               variant="skyBlue"
-              onClick={handleShare}
+              onClick={() => setSheetMode("share")}
             />
           </div>
         </div>
       </div>
 
-      {/* 💾 저장 형식 선택 시트 */}
-      {showSaveSheet && (
+      {/* 💾 저장/공유 형식 선택 시트 */}
+      {sheetMode && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
-          onClick={() => setShowSaveSheet(false)}
+          onClick={() => setSheetMode(null)}
         >
           <div
             className="w-full max-w-sm bg-white rounded-t-3xl p-6 pb-10"
@@ -726,11 +725,13 @@ export default function PlaceCard(): ReactElement {
           >
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-6" />
             <p className="text-base font-semibold text-neutral-800 mb-4">
-              저장 형식 선택
+              {sheetMode === "save" ? "저장 형식 선택" : "공유 형식 선택"}
             </p>
             <div className="flex flex-col gap-3">
               <button
-                onClick={() => handleSave(false)}
+                onClick={() =>
+                  sheetMode === "save" ? handleSave(false) : handleShare(false)
+                }
                 className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 active:bg-gray-100 transition"
               >
                 <div className="w-12 h-12 rounded-xl bg-sky-100 flex items-center justify-center text-sky-600 text-xl">
@@ -738,7 +739,7 @@ export default function PlaceCard(): ReactElement {
                 </div>
                 <div className="text-left">
                   <p className="text-sm font-semibold text-neutral-800">
-                    피드용 저장
+                    피드용
                   </p>
                   <p className="text-xs text-neutral-400">
                     인스타 피드에 올리기 좋아요
@@ -746,7 +747,9 @@ export default function PlaceCard(): ReactElement {
                 </div>
               </button>
               <button
-                onClick={() => handleSave(true)}
+                onClick={() =>
+                  sheetMode === "save" ? handleSave(true) : handleShare(true)
+                }
                 className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 active:bg-gray-100 transition"
               >
                 <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600 text-xl">
@@ -754,7 +757,7 @@ export default function PlaceCard(): ReactElement {
                 </div>
                 <div className="text-left">
                   <p className="text-sm font-semibold text-neutral-800">
-                    스토리용 저장
+                    스토리용
                   </p>
                   <p className="text-xs text-neutral-400">
                     인스타 스토리에 꽉 차게 저장해요
