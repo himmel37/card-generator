@@ -142,43 +142,48 @@ function drawSvgIcon(
   ctx.restore();
 }
 
-async function drawCard(data: {
-  imageUrl: string;
-  title: string;
-  category: string;
-  subtitle: string;
-  rating: number;
-  reviewCount: number;
-}): Promise<string> {
+async function drawCard(
+  data: {
+    imageUrl: string;
+    title: string;
+    category: string;
+    subtitle: string;
+    rating: number;
+    reviewCount: number;
+  },
+  storyMode = false
+): Promise<string> {
   const DPR = 2;
   const W = 390;
-
-  const IMG_H = Math.round((W * 500) / 390);
   const OVERLAP = 64;
   const PADDING = 24;
-  const RADIUS = 24;
+  const RADIUS = 12; // 모서리 반지름 줄임
+  const INNER_RADIUS = 12; // 이미지↔카드 겹치는 부분
 
-  // 텍스트 영역 높이 동적 계산
-  let infoH = PADDING + 24; // 제목
-  infoH += 36; // 별점
+  // 정보 영역 높이
+  let infoH = PADDING + 24;
+  infoH += 36;
   if (data.category) infoH += 26;
   if (data.subtitle) infoH += 24;
-  infoH += 16 + 40 + 10; // 버튼 영역
+  infoH += 16 + 40 + 10;
 
-  const TOTAL_H = IMG_H + infoH - OVERLAP;
+  // 스토리 모드: 9:16 전체 높이에서 정보 영역을 빼고 이미지 영역을 늘림
+  const STORY_H = Math.round((W * 16) / 9);
+  const IMG_H = storyMode ? STORY_H - infoH + OVERLAP : Math.round((W * 4) / 4); // 피드 비율
+  const CARD_H = IMG_H + infoH - OVERLAP;
 
   const canvas = document.createElement("canvas");
   canvas.width = W * DPR;
-  canvas.height = TOTAL_H * DPR;
+  canvas.height = CARD_H * DPR;
   const ctx = canvas.getContext("2d")!;
   ctx.scale(DPR, DPR);
 
-  // ── 전체 카드 클리핑
-  roundRect(ctx, 0, 0, W, TOTAL_H, RADIUS);
-  ctx.clip();
-
-  // ── 배경 (투명 - 둥근 모서리 바깥이 깔끔하게 보임)
-  // clip()으로 이미 둥글게 잘렸으므로 별도 배경 불필요
+  ctx.save();
+  // 스토리 모드만 바깥 모서리 둥글게, 피드 모드는 사각형
+  if (storyMode) {
+    roundRect(ctx, 0, 0, W, CARD_H, RADIUS);
+    ctx.clip();
+  }
 
   // ── 이미지
   try {
@@ -202,9 +207,17 @@ async function drawCard(data: {
     ctx.fillRect(0, 0, W, IMG_H);
   }
 
-  // ── 하단 흰 카드 영역
+  // ── 하단 흰 카드 영역 (위쪽 모서리만 둥글게 - 항상)
   const cardY = IMG_H - OVERLAP;
-  roundRect(ctx, 0, cardY, W, TOTAL_H - cardY, RADIUS);
+  ctx.beginPath();
+  ctx.moveTo(0 + INNER_RADIUS, cardY);
+  ctx.lineTo(W - INNER_RADIUS, cardY);
+  ctx.quadraticCurveTo(W, cardY, W, cardY + INNER_RADIUS);
+  ctx.lineTo(W, CARD_H);
+  ctx.lineTo(0, CARD_H);
+  ctx.lineTo(0, cardY + INNER_RADIUS);
+  ctx.quadraticCurveTo(0, cardY, INNER_RADIUS, cardY);
+  ctx.closePath();
   ctx.fillStyle = "#ffffff";
   ctx.fill();
 
@@ -325,6 +338,7 @@ async function drawCard(data: {
   });
   ctx.textAlign = "left";
 
+  ctx.restore(); // 카드 translate/clip 해제
   return canvas.toDataURL("image/png");
 }
 async function loadImage(src: string): Promise<HTMLImageElement> {
@@ -386,6 +400,7 @@ export default function PlaceCard(): ReactElement {
   const [editingReview, setEditingReview] = useState(false);
   const [draft, setDraft] = useState("");
   const [isImageLoaded, setIsImageLoaded] = useState(false);
+  const [showSaveSheet, setShowSaveSheet] = useState(false);
 
   const fileRef = useRef<HTMLInputElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -424,19 +439,17 @@ export default function PlaceCard(): ReactElement {
   }
 
   // ─── 캡처: Canvas로 직접 그리기 ────────────────────────
-  async function captureCard(): Promise<string> {
+  async function captureCard(storyMode = false): Promise<string> {
     const isActuallyLoaded = imgRef.current?.complete || isImageLoaded;
     if (!isActuallyLoaded) throw new Error("이미지 로딩 중");
-    return drawCard(data);
+    return drawCard(data, storyMode);
   }
 
   // ─── dataUrl → Blob/File 변환 ──────────────────────────
-  async function captureAsFile(): Promise<{
-    dataUrl: string;
-    blob: Blob;
-    file: File;
-  }> {
-    const dataUrl = await captureCard();
+  async function captureAsFile(
+    storyMode = false
+  ): Promise<{ dataUrl: string; blob: Blob; file: File }> {
+    const dataUrl = await captureCard(storyMode);
     const res = await fetch(dataUrl);
     const blob = await res.blob();
     const file = new File([blob], `${data.title || "card"}.png`, {
@@ -457,9 +470,10 @@ export default function PlaceCard(): ReactElement {
   }
 
   // ─── 저장 ──────────────────────────────────────────────
-  async function handleSave() {
+  async function handleSave(storyMode = false) {
+    setShowSaveSheet(false);
     try {
-      const { dataUrl, file } = await captureAsFile();
+      const { dataUrl, file } = await captureAsFile(storyMode);
 
       if (isMobile() && navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: data.title });
@@ -506,12 +520,12 @@ export default function PlaceCard(): ReactElement {
   // ─── 렌더 ──────────────────────────────────────────────
   return (
     <div
-      className="rounded-3xl overflow-hidden bg-white"
+      className="rounded-xl overflow-hidden bg-white"
       style={{ isolation: "isolate" }}
     >
-      <div className="relative w-full bg-black rounded-3xl overflow-hidden shadow-2xl">
+      <div className="relative w-full bg-black rounded-xl overflow-hidden shadow-2xl">
         {/* 📷 이미지 영역 */}
-        <div className="relative aspect-[390/500] group">
+        <div className="relative aspect-[4/5] group">
           <img
             ref={imgRef}
             src={data.imageUrl}
@@ -564,7 +578,10 @@ export default function PlaceCard(): ReactElement {
               </h1>
             )}
             <div className="flex items-center gap-3">
-              <CircleIconButton label="북마크" onClick={handleSave}>
+              <CircleIconButton
+                label="북마크"
+                onClick={() => setShowSaveSheet(true)}
+              >
                 <Bookmark size={18} />
               </CircleIconButton>
               <CircleIconButton label="공유" onClick={handleShare}>
@@ -685,7 +702,7 @@ export default function PlaceCard(): ReactElement {
               label="저장"
               Icon={Bookmark}
               variant="skyBlue"
-              onClick={handleSave}
+              onClick={() => setShowSaveSheet(true)}
             />
             <ActionButton
               label="공유"
@@ -696,6 +713,58 @@ export default function PlaceCard(): ReactElement {
           </div>
         </div>
       </div>
+
+      {/* 💾 저장 형식 선택 시트 */}
+      {showSaveSheet && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/40"
+          onClick={() => setShowSaveSheet(false)}
+        >
+          <div
+            className="w-full max-w-sm bg-white rounded-t-3xl p-6 pb-10"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-6" />
+            <p className="text-base font-semibold text-neutral-800 mb-4">
+              저장 형식 선택
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => handleSave(false)}
+                className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 active:bg-gray-100 transition"
+              >
+                <div className="w-12 h-12 rounded-xl bg-sky-100 flex items-center justify-center text-sky-600 text-xl">
+                  🖼️
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-neutral-800">
+                    피드용 저장
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    인스타 피드에 올리기 좋아요
+                  </p>
+                </div>
+              </button>
+              <button
+                onClick={() => handleSave(true)}
+                className="flex items-center gap-4 p-4 rounded-2xl bg-gray-50 active:bg-gray-100 transition"
+              >
+                <div className="w-12 h-12 rounded-xl bg-purple-100 flex items-center justify-center text-purple-600 text-xl">
+                  📱
+                </div>
+                <div className="text-left">
+                  <p className="text-sm font-semibold text-neutral-800">
+                    스토리용 저장
+                  </p>
+                  <p className="text-xs text-neutral-400">
+                    인스타 스토리에 꽉 차게 저장해요
+                  </p>
+                </div>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
