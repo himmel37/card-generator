@@ -158,7 +158,7 @@ async function drawCard(
   const OVERLAP = 64;
   const PADDING = 24;
   const RADIUS = 12; // 모서리 반지름 줄임
-  const INNER_RADIUS = 12; // 이미지↔카드 겹치는 부분
+  const INNER_RADIUS = 24; // 이미지↔카드 겹치는 부분
 
   // 정보 영역 높이
   let infoH = PADDING + 24;
